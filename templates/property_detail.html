@@ -1,17 +1,191 @@
 {% extends 'base.html' %}
 {% block content %}
 <div class="container py-5">
-  <div class="d-flex justify-content-between gap-3 align-items-start flex-wrap"><div><div class="eyebrow">{{ property.property_type|replace('_',' ')|upper }}</div><h1>{{ property.name }}</h1><p class="text-secondary">{{ property.address }}</p></div>{% if property.map_location %}<a class="btn btn-outline-dark" target="_blank" rel="noopener" href="{{ property.map_location }}">Open map</a>{% endif %}</div>
-  <div class="row g-3 mt-2">{% for img in overview %}<div class="col-6 col-md-3"><img class="gallery-img" loading="lazy" src="{{ url_for('image', image_id=img.id) }}"></div>{% else %}<div class="col-12"><div class="placeholder-image large">No overview images</div></div>{% endfor %}</div>
-  <div class="row g-4 mt-2"><div class="col-lg-8"><div class="section-card"><h4>Property overview</h4><div class="detail-grid"><div><small>Type</small><b>{{ property.property_type|title }}</b></div><div><small>Construction</small><b>{{ 'Completed' if property.construction_completed else 'Under construction' }}</b></div><div><small>Started</small><b>{{ property.construction_start or '—' }}</b></div><div><small>{{ 'Completed' if property.construction_completed else 'Expected completion' }}</small><b>{{ property.construction_end or '—' }}</b></div></div>{% if property.important_details %}<hr><p class="mb-0">{{ property.important_details }}</p>{% endif %}</div>
-  <div class="section-card mt-4"><h4>Available options</h4>{% set data=property.structure_data %}
-  {% if property.property_type == 'individual' %}
-    {% for u in data.units %}<div class="unit-card"><div class="d-flex justify-content-between"><b>Unit {{ loop.index }}</b><span>{{ u.type|upper }} · {{ u.facing }}</span></div><div class="small text-secondary mt-2">{{ u.size_yards }} sq yd · {{ u.size_sqm }} sq m · {{ u.dimensions }}</div><div class="fw-semibold mt-2">₹{{ '{:,.0f}'.format((u.pricing_min or 0)|float) }}{% if u.pricing_max %} – ₹{{ '{:,.0f}'.format((u.pricing_max or 0)|float) }}{% endif %}</div>{% set uimgs=unit_images|selectattr('unit_key','equalto','individual_' ~ loop.index)|list %}{% if uimgs %}<div class="row g-2 mt-2">{% for im in uimgs %}<div class="col-4"><img class="unit-img" src="{{ url_for('image', image_id=im.id) }}" loading="lazy"></div>{% endfor %}</div>{% endif %}<a class="btn btn-success btn-sm mt-3" target="_blank" href="{{ 'https://wa.me/' ~ (property.owner_contact|replace('+','')) ~ '?text=' ~ ('Topvio enquiry: ' ~ property.name ~ ' - Unit ' ~ loop.index ~ ' (' ~ u.type ~ ', ' ~ u.facing ~ ')')|urlencode }}">Connect with team</a></div>{% endfor %}
-  {% elif property.property_type == 'apartment' %}
-    {% for f in data.floors %}<div class="unit-card"><div class="d-flex justify-content-between"><b>Floor {{ f.floor }}</b><span>{{ f.number_units }} units</span></div>{% for u in f.units %}<div class="border rounded-3 p-3 mt-2"><div class="d-flex justify-content-between"><b>Unit {{ loop.index }}</b><span>{{ u.type|upper }} · {{ u.facing }}</span></div><div class="small text-secondary mt-1">{{ u.size_yards }} sq yd · {{ u.size_sqm }} sq m · {{ u.dimensions }}</div><div class="fw-semibold mt-1">₹{{ '{:,.0f}'.format((u.pricing_min or 0)|float) }}{% if u.pricing_max %} – ₹{{ '{:,.0f}'.format((u.pricing_max or 0)|float) }}{% endif %}</div>{% set key='floor_' ~ f.floor ~ '_unit_' ~ loop.index %}{% set uimgs=unit_images|selectattr('unit_key','equalto',key)|list %}{% if uimgs %}<div class="row g-2 mt-2">{% for im in uimgs %}<div class="col-4"><img class="unit-img" src="{{ url_for('image', image_id=im.id) }}" loading="lazy"></div>{% endfor %}</div>{% endif %}<a class="btn btn-success btn-sm mt-2" target="_blank" href="{{ 'https://wa.me/' ~ (property.owner_contact|replace('+','')) ~ '?text=' ~ ('Topvio enquiry: ' ~ property.name ~ ' - Floor ' ~ f.floor ~ ', Unit ' ~ loop.index ~ ' (' ~ u.type ~ ', ' ~ u.facing ~ ')')|urlencode }}">Connect with team</a></div>{% endfor %}</div>{% endfor %}
-  {% else %}
-    {% for a in data.apartments %}<div class="unit-card"><div class="d-flex justify-content-between"><b>Apartment {{ a.apartment }}</b><span>{{ a.floors|length }} floors</span></div>{% for f in a.floors %}<div class="border rounded-3 p-3 mt-2"><div class="d-flex justify-content-between"><b>Floor {{ f.floor }}</b><span>{{ f.number_units }} units</span></div>{% for u in f.units %}<div class="border rounded-3 p-3 mt-2"><div class="d-flex justify-content-between"><b>Unit {{ loop.index }}</b><span>{{ u.type|upper }} · {{ u.facing }}</span></div><div class="small text-secondary mt-1">{{ u.size_yards }} sq yd · {{ u.size_sqm }} sq m · {{ u.dimensions }}</div><div class="fw-semibold mt-1">₹{{ '{:,.0f}'.format((u.pricing_min or 0)|float) }}{% if u.pricing_max %} – ₹{{ '{:,.0f}'.format((u.pricing_max or 0)|float) }}{% endif %}</div>{% set key='apartment_' ~ a.apartment ~ '_floor_' ~ f.floor ~ '_unit_' ~ loop.index %}{% set uimgs=unit_images|selectattr('unit_key','equalto',key)|list %}{% if uimgs %}<div class="row g-2 mt-2">{% for im in uimgs %}<div class="col-4"><img class="unit-img" src="{{ url_for('image', image_id=im.id) }}" loading="lazy"></div>{% endfor %}</div>{% endif %}<a class="btn btn-success btn-sm mt-2" target="_blank" href="{{ 'https://wa.me/' ~ (property.owner_contact|replace('+','')) ~ '?text=' ~ ('Topvio enquiry: ' ~ property.name ~ ' - Apartment ' ~ a.apartment ~ ', Floor ' ~ f.floor ~ ', Unit ' ~ loop.index ~ ' (' ~ u.type ~ ', ' ~ u.facing ~ ')')|urlencode }}">Connect with team</a></div>{% endfor %}</div>{% endfor %}</div>{% endfor %}
-  {% endif %}</div></div>
-  <div class="col-lg-4"><div class="section-card"><h4>Property & owner</h4><p class="mb-1"><small class="text-secondary">Owner</small><br>{{ property.owner_name }}</p><p class="mb-1"><small class="text-secondary">Contact</small><br>{{ property.owner_contact }}</p><p class="mb-1"><small class="text-secondary">Email</small><br>{{ property.owner_email }}</p><p class="mb-0"><small class="text-secondary">Documents</small><br>{{ property.property_documents or '—' }}</p></div></div></div></div>
+  <div class="d-flex justify-content-between gap-3 align-items-start flex-wrap">
+    <div>
+      <div class="eyebrow">{{ property.property_type|replace('_',' ')|upper }}</div>
+      <h1>{{ property.name }}</h1>
+      <p class="text-secondary">{{ property.address }}</p>
+    </div>
+    {% if property.map_location %}
+      <a class="btn btn-outline-dark" target="_blank" rel="noopener" href="{{ property.map_location }}">Open map</a>
+    {% endif %}
+  </div>
+
+  <div class="row g-3 mt-2">
+    {% for img in overview %}
+      <div class="col-6 col-md-3">
+        <img class="gallery-img" loading="lazy" src="{{ url_for('image', image_id=img.id) }}" alt="{{ property.name }}">
+      </div>
+    {% else %}
+      <div class="col-12"><div class="placeholder-image large">No overview images</div></div>
+    {% endfor %}
+  </div>
+
+  <div class="row g-4 mt-2">
+    <div class="col-lg-8">
+      <div class="section-card">
+        <h4>Property overview</h4>
+        <div class="detail-grid">
+          <div><small>Type</small><b>{{ property.property_type|replace('_',' ')|title }}</b></div>
+          <div><small>Construction</small><b>{{ 'Completed' if property.construction_completed else 'Under construction' }}</b></div>
+          <div><small>Started</small><b>{{ property.construction_start or '—' }}</b></div>
+          <div><small>{{ 'Completed' if property.construction_completed else 'Expected completion' }}</small><b>{{ property.construction_end or '—' }}</b></div>
+        </div>
+        {% if property.important_details %}<hr><p class="mb-0">{{ property.important_details }}</p>{% endif %}
+      </div>
+
+      <div class="section-card mt-4">
+        <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap">
+          <div>
+            <h4 class="mb-1">Available options</h4>
+            <p class="text-secondary mb-0 small">Only units currently available in inventory are shown.</p>
+          </div>
+        </div>
+
+        {% set data = property.structure_data or {} %}
+
+        {% if property.property_type == 'individual' %}
+          {% set ns = namespace(count=0) %}
+          {% for u in data.get('units', []) %}
+            {% if u.get('available', true) %}
+              {% set ns.count = ns.count + 1 %}
+              <div class="unit-card">
+                <div class="d-flex justify-content-between gap-2 flex-wrap">
+                  <b>{{ u.get('label', 'individual_' ~ loop.index)|replace('_',' ')|title }}</b>
+                  <span>{{ u.get('type','')|upper }} · {{ u.get('facing','') }}</span>
+                </div>
+                <div class="small text-secondary mt-2">{{ u.get('size_yards','') }} sq yd · {{ u.get('size_sqm','') }} sq m · {{ u.get('dimensions','') }}</div>
+                <div class="fw-semibold mt-2">₹{{ '{:,.0f}'.format((u.get('pricing_min',0) or 0)|float) }}{% if u.get('pricing_max') %} – ₹{{ '{:,.0f}'.format((u.get('pricing_max') or 0)|float) }}{% endif %}</div>
+
+                {% set key = u.get('label', 'individual_' ~ loop.index) %}
+                {% set uimgs = unit_images|selectattr('unit_key','equalto',key)|list %}
+                {% if uimgs %}
+                  <div class="row g-2 mt-2">
+                    {% for im in uimgs %}
+                      <div class="col-4"><img class="unit-img" src="{{ url_for('image', image_id=im.id) }}" loading="lazy" alt="{{ key }}"></div>
+                    {% endfor %}
+                  </div>
+                {% endif %}
+                <a class="btn btn-success btn-sm mt-3" target="_blank"
+                   href="{{ 'https://wa.me/' ~ (property.owner_contact|replace('+','')) ~ '?text=' ~ ('Topvio enquiry: ' ~ property.name ~ ' - ' ~ key ~ ' (' ~ u.get('type','') ~ ', ' ~ u.get('facing','') ~ ')')|urlencode }}">
+                  Connect with team
+                </a>
+              </div>
+            {% endif %}
+          {% endfor %}
+          {% if ns.count == 0 %}<div class="empty-state mt-3">No units are currently available.</div>{% endif %}
+
+        {% elif property.property_type == 'apartment' %}
+          {% set total_available = namespace(count=0) %}
+          {% for f in data.get('floors', []) %}
+            {% set floor_ns = namespace(count=0) %}
+            {% for u in f.get('units', []) %}
+              {% if u.get('available', true) %}{% set floor_ns.count = floor_ns.count + 1 %}{% set total_available.count = total_available.count + 1 %}{% endif %}
+            {% endfor %}
+            {% if floor_ns.count %}
+              <div class="unit-card">
+                <div class="d-flex justify-content-between gap-2 flex-wrap">
+                  <b>Floor {{ f.get('floor') }}</b>
+                  <span>{{ floor_ns.count }} available unit{{ '' if floor_ns.count == 1 else 's' }}</span>
+                </div>
+                {% for u in f.get('units', []) %}
+                  {% if u.get('available', true) %}
+                    {% set key = u.get('label', 'floor_' ~ f.get('floor') ~ '_unit_' ~ loop.index) %}
+                    <div class="border rounded-3 p-3 mt-2">
+                      <div class="d-flex justify-content-between gap-2 flex-wrap">
+                        <b>{{ key|replace('_',' ')|title }}</b>
+                        <span>{{ u.get('type','')|upper }} · {{ u.get('facing','') }}</span>
+                      </div>
+                      <div class="small text-secondary mt-1">{{ u.get('size_yards','') }} sq yd · {{ u.get('size_sqm','') }} sq m · {{ u.get('dimensions','') }}</div>
+                      <div class="fw-semibold mt-1">₹{{ '{:,.0f}'.format((u.get('pricing_min',0) or 0)|float) }}{% if u.get('pricing_max') %} – ₹{{ '{:,.0f}'.format((u.get('pricing_max') or 0)|float) }}{% endif %}</div>
+                      {% set uimgs=unit_images|selectattr('unit_key','equalto',key)|list %}
+                      {% if uimgs %}
+                        <div class="row g-2 mt-2">
+                          {% for im in uimgs %}<div class="col-4"><img class="unit-img" src="{{ url_for('image', image_id=im.id) }}" loading="lazy" alt="{{ key }}"></div>{% endfor %}
+                        </div>
+                      {% endif %}
+                      <a class="btn btn-success btn-sm mt-2" target="_blank"
+                         href="{{ 'https://wa.me/' ~ (property.owner_contact|replace('+','')) ~ '?text=' ~ ('Topvio enquiry: ' ~ property.name ~ ' - ' ~ key ~ ' (' ~ u.get('type','') ~ ', ' ~ u.get('facing','') ~ ')')|urlencode }}">
+                        Connect with team
+                      </a>
+                    </div>
+                  {% endif %}
+                {% endfor %}
+              </div>
+            {% endif %}
+          {% endfor %}
+          {% if total_available.count == 0 %}<div class="empty-state mt-3">No units are currently available.</div>{% endif %}
+
+        {% else %}
+          {% set total_available = namespace(count=0) %}
+          {% for a in data.get('apartments', []) %}
+            {% set apartment_ns = namespace(count=0) %}
+            {% for f in a.get('floors', []) %}
+              {% for u in f.get('units', []) %}
+                {% if u.get('available', true) %}{% set apartment_ns.count = apartment_ns.count + 1 %}{% set total_available.count = total_available.count + 1 %}{% endif %}
+              {% endfor %}
+            {% endfor %}
+            {% if apartment_ns.count %}
+              <div class="unit-card">
+                <div class="d-flex justify-content-between gap-2 flex-wrap">
+                  <b>Apartment {{ a.get('apartment') }}</b>
+                  <span>{{ apartment_ns.count }} available unit{{ '' if apartment_ns.count == 1 else 's' }}</span>
+                </div>
+                {% for f in a.get('floors', []) %}
+                  {% set floor_ns = namespace(count=0) %}
+                  {% for u in f.get('units', []) %}
+                    {% if u.get('available', true) %}{% set floor_ns.count = floor_ns.count + 1 %}{% endif %}
+                  {% endfor %}
+                  {% if floor_ns.count %}
+                    <div class="border rounded-3 p-3 mt-2">
+                      <div class="d-flex justify-content-between gap-2 flex-wrap">
+                        <b>Floor {{ f.get('floor') }}</b>
+                        <span>{{ floor_ns.count }} available unit{{ '' if floor_ns.count == 1 else 's' }}</span>
+                      </div>
+                      {% for u in f.get('units', []) %}
+                        {% if u.get('available', true) %}
+                          {% set key = u.get('label', 'apartment_' ~ a.get('apartment') ~ '_floor_' ~ f.get('floor') ~ '_unit_' ~ loop.index) %}
+                          <div class="border rounded-3 p-3 mt-2">
+                            <div class="d-flex justify-content-between gap-2 flex-wrap">
+                              <b>{{ key|replace('_',' ')|title }}</b>
+                              <span>{{ u.get('type','')|upper }} · {{ u.get('facing','') }}</span>
+                            </div>
+                            <div class="small text-secondary mt-1">{{ u.get('size_yards','') }} sq yd · {{ u.get('size_sqm','') }} sq m · {{ u.get('dimensions','') }}</div>
+                            <div class="fw-semibold mt-1">₹{{ '{:,.0f}'.format((u.get('pricing_min',0) or 0)|float) }}{% if u.get('pricing_max') %} – ₹{{ '{:,.0f}'.format((u.get('pricing_max') or 0)|float) }}{% endif %}</div>
+                            {% set uimgs=unit_images|selectattr('unit_key','equalto',key)|list %}
+                            {% if uimgs %}
+                              <div class="row g-2 mt-2">
+                                {% for im in uimgs %}<div class="col-4"><img class="unit-img" src="{{ url_for('image', image_id=im.id) }}" loading="lazy" alt="{{ key }}"></div>{% endfor %}
+                              </div>
+                            {% endif %}
+                            <a class="btn btn-success btn-sm mt-2" target="_blank"
+                               href="{{ 'https://wa.me/' ~ (property.owner_contact|replace('+','')) ~ '?text=' ~ ('Topvio enquiry: ' ~ property.name ~ ' - ' ~ key ~ ' (' ~ u.get('type','') ~ ', ' ~ u.get('facing','') ~ ')')|urlencode }}">
+                              Connect with team
+                            </a>
+                          </div>
+                        {% endif %}
+                      {% endfor %}
+                    </div>
+                  {% endif %}
+                {% endfor %}
+              </div>
+            {% endif %}
+          {% endfor %}
+          {% if total_available.count == 0 %}<div class="empty-state mt-3">No units are currently available.</div>{% endif %}
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="col-lg-4">
+      <div class="section-card">
+        <h4>Property & owner</h4>
+        <p class="mb-1"><small class="text-secondary">Owner</small><br>{{ property.owner_name }}</p>
+        <p class="mb-1"><small class="text-secondary">Contact</small><br>{{ property.owner_contact }}</p>
+        <p class="mb-1"><small class="text-secondary">Email</small><br>{{ property.owner_email }}</p>
+        <p class="mb-0"><small class="text-secondary">Documents</small><br>{{ property.property_documents or '—' }}</p>
+      </div>
+    </div>
+  </div>
 </div>
 {% endblock %}

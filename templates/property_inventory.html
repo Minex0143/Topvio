@@ -1,0 +1,159 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="container-fluid inventory-shell py-4 py-lg-5">
+  <div class="container-xxl">
+    <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-4">
+      <div>
+        <div class="eyebrow">INVENTORY MANAGEMENT</div>
+        <h1 class="display-6 fw-bold mb-1">{{ property.name }}</h1>
+        <p class="text-secondary mb-0">{{ property.address }}</p>
+      </div>
+      <div class="d-flex gap-2 flex-wrap">
+        <a class="btn btn-outline-dark rounded-3" href="{{ url_for('admin_dashboard') }}">← Properties</a>
+        <a class="btn btn-dark rounded-3" href="{{ url_for('property_wizard', property_id=property.id) }}">✎ Modify property</a>
+      </div>
+    </div>
+
+    <div class="row g-3 mb-4">
+      <div class="col-6 col-lg-4"><div class="inventory-stat"><span>Total inventory</span><strong id="totalCount">{{ summary.total }}</strong><small>Configured units</small></div></div>
+      <div class="col-6 col-lg-4"><div class="inventory-stat available"><span>Available</span><strong id="availableCount">{{ summary.available }}</strong><small>Visible to users</small></div></div>
+      <div class="col-6 col-lg-4"><div class="inventory-stat unavailable"><span>Removed</span><strong id="unavailableCount">{{ summary.unavailable }}</strong><small>Hidden from users</small></div></div>
+    </div>
+
+    <div class="inventory-note mb-4">
+      <div class="inventory-note-icon">✓</div>
+      <div><b>Update inventory without changing property details.</b><br><span>Remove a unit when it is no longer available. It immediately disappears from the user-facing property page. You can restore it later if it becomes available again.</span></div>
+    </div>
+
+    {% if property.property_type == 'individual' %}
+      <section class="inventory-group">
+        <div class="inventory-group-head"><div><span class="eyebrow">INDIVIDUAL HOUSE</span><h3>Units</h3></div></div>
+        <div class="inventory-grid">
+          {% for u in structure.get('units', []) %}
+            {% set key = u.get('label', 'individual_' ~ loop.index) %}
+            {% set available = u.get('available', true) %}
+            <article class="inventory-unit {% if not available %}is-unavailable{% endif %}" data-unit-card="{{ key }}">
+              <div class="inventory-unit-top">
+                <div><span class="unit-kicker">UNIT</span><h4>{{ key|replace('_',' ')|title }}</h4></div>
+                <span class="inventory-status" data-status>{{ 'Available' if available else 'Removed' }}</span>
+              </div>
+              <div class="inventory-unit-meta">
+                <span>{{ u.get('type','—') }}</span><span>{{ u.get('facing','—') }}</span><span>{{ u.get('size_yards','—') }} sq yd</span>
+              </div>
+              <button class="btn {% if available %}btn-outline-danger{% else %}btn-outline-success{% endif %} inventory-action"
+                      type="button" data-key="{{ key|e }}" data-available="{{ 'true' if available else 'false' }}">
+                {{ 'Delete from inventory' if available else 'Restore unit' }}
+              </button>
+            </article>
+          {% endfor %}
+        </div>
+      </section>
+
+    {% elif property.property_type == 'apartment' %}
+      {% for f in structure.get('floors', []) %}
+        <section class="inventory-group">
+          <div class="inventory-group-head"><div><span class="eyebrow">FLOOR {{ f.get('floor') }}</span><h3>Floor {{ f.get('floor') }}</h3></div></div>
+          <div class="inventory-grid">
+            {% for u in f.get('units', []) %}
+              {% set key = u.get('label', 'floor_' ~ f.get('floor') ~ '_unit_' ~ loop.index) %}
+              {% set available = u.get('available', true) %}
+              <article class="inventory-unit {% if not available %}is-unavailable{% endif %}" data-unit-card="{{ key }}">
+                <div class="inventory-unit-top">
+                  <div><span class="unit-kicker">FLOOR {{ f.get('floor') }}</span><h4>{{ key|replace('_',' ')|title }}</h4></div>
+                  <span class="inventory-status" data-status>{{ 'Available' if available else 'Removed' }}</span>
+                </div>
+                <div class="inventory-unit-meta">
+                  <span>{{ u.get('type','—') }}</span><span>{{ u.get('facing','—') }}</span><span>{{ u.get('size_yards','—') }} sq yd</span>
+                </div>
+                <button class="btn {% if available %}btn-outline-danger{% else %}btn-outline-success{% endif %} inventory-action"
+                        type="button" data-key="{{ key|e }}" data-available="{{ 'true' if available else 'false' }}">
+                  {{ 'Delete from inventory' if available else 'Restore unit' }}
+                </button>
+              </article>
+            {% endfor %}
+          </div>
+        </section>
+      {% endfor %}
+
+    {% else %}
+      {% for a in structure.get('apartments', []) %}
+        <section class="inventory-group">
+          <div class="inventory-group-head">
+            <div><span class="eyebrow">APARTMENT {{ a.get('apartment') }}</span><h3>Apartment {{ a.get('apartment') }}</h3></div>
+          </div>
+          {% for f in a.get('floors', []) %}
+            <div class="inventory-floor">
+              <div class="inventory-floor-title">Floor {{ f.get('floor') }}</div>
+              <div class="inventory-grid">
+                {% for u in f.get('units', []) %}
+                  {% set key = u.get('label', 'apartment_' ~ a.get('apartment') ~ '_floor_' ~ f.get('floor') ~ '_unit_' ~ loop.index) %}
+                  {% set available = u.get('available', true) %}
+                  <article class="inventory-unit {% if not available %}is-unavailable{% endif %}" data-unit-card="{{ key }}">
+                    <div class="inventory-unit-top">
+                      <div><span class="unit-kicker">APARTMENT {{ a.get('apartment') }} · FLOOR {{ f.get('floor') }}</span><h4>{{ key|replace('_',' ')|title }}</h4></div>
+                      <span class="inventory-status" data-status>{{ 'Available' if available else 'Removed' }}</span>
+                    </div>
+                    <div class="inventory-unit-meta">
+                      <span>{{ u.get('type','—') }}</span><span>{{ u.get('facing','—') }}</span><span>{{ u.get('size_yards','—') }} sq yd</span>
+                    </div>
+                    <button class="btn {% if available %}btn-outline-danger{% else %}btn-outline-success{% endif %} inventory-action"
+                            type="button" data-key="{{ key|e }}" data-available="{{ 'true' if available else 'false' }}">
+                      {{ 'Delete from inventory' if available else 'Restore unit' }}
+                    </button>
+                  </article>
+                {% endfor %}
+              </div>
+            </div>
+          {% endfor %}
+        </section>
+      {% endfor %}
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(() => {
+  const updateCounts = data => {
+    document.querySelector('#totalCount').textContent = data.summary.total;
+    document.querySelector('#availableCount').textContent = data.summary.available;
+    document.querySelector('#unavailableCount').textContent = data.summary.unavailable;
+  };
+
+  document.querySelectorAll('.inventory-action').forEach(button => {
+    button.addEventListener('click', async () => {
+      const card = button.closest('[data-unit-card]');
+      const key = button.dataset.key;
+      const currentlyAvailable = button.dataset.available === 'true';
+      const nextAvailable = !currentlyAvailable;
+
+      if (currentlyAvailable && !confirm(`Remove "${key.replaceAll('_', ' ')}" from available inventory?\n\nUsers will no longer see this unit.`)) return;
+
+      button.disabled = true;
+      try {
+        const response = await fetch('{{ url_for("update_inventory", property_id=property.id) }}', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({unit_key: key, available: nextAvailable})
+        });
+        const data = await response.json();
+        if (!data.ok) throw new Error(data.error || 'Could not update inventory.');
+
+        card.classList.toggle('is-unavailable', !nextAvailable);
+        const status = card.querySelector('[data-status]');
+        status.textContent = nextAvailable ? 'Available' : 'Removed';
+        button.dataset.available = String(nextAvailable);
+        button.className = `btn ${nextAvailable ? 'btn-outline-danger' : 'btn-outline-success'} inventory-action`;
+        button.textContent = nextAvailable ? 'Delete from inventory' : 'Restore unit';
+        updateCounts(data);
+      } catch (error) {
+        alert(error.message);
+      } finally {
+        button.disabled = false;
+      }
+    });
+  });
+})();
+</script>
+{% endblock %}

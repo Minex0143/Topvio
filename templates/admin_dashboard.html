@@ -53,6 +53,7 @@
           </div>
           <div class="action-buttons">
             <a class="btn btn-outline-dark" href="{{ url_for('property_wizard', property_id=p.id) }}">✎ Modify</a>
+            <a class="btn btn-outline-warning" href="{{ url_for('property_inventory', property_id=p.id) }}">▦ Update inventory</a>
             <a class="btn btn-outline-primary" href="{{ url_for('download_property', property_id=p.id) }}">↓ Download</a>
             {% if p.is_listed %}
               <a class="btn btn-outline-secondary" href="{{ url_for('property_detail', property_id=p.id) }}">View</a>
