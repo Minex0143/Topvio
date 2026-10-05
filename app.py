@@ -4,6 +4,8 @@ import json
 import math
 import os
 import re
+import html
+import zipfile
 from functools import wraps
 from urllib.parse import quote
 
@@ -180,56 +182,48 @@ def admin_dashboard():
     properties = Property.query.order_by(Property.created_at.desc()).all()
     return render_template('admin_dashboard.html', properties=properties)
 
-@app.route('/admin/property/new', methods=['GET', 'POST'])
-@admin_required
-def property_wizard():
-    if request.method == 'GET':
-        return render_template('property_wizard.html')
-    payload = parse_json_form('payload')
+
+def _validate_property_payload(payload, files_required=True):
     required = ['owner', 'property', 'property_type', 'structure', 'construction']
     if not all(payload.get(k) for k in required):
-        return jsonify(ok=False, error='Complete all required steps before listing the property.'), 400
+        return 'Complete all required steps before saving the property.'
 
     owner = payload['owner']
     prop = payload['property']
     ptype = payload['property_type']
     construction = payload['construction']
     structure = payload['structure']
+
     if not re.fullmatch(r'\d{10}', re.sub(r'\D', '', owner.get('contact', ''))):
-        return jsonify(ok=False, error='Owner contact must be a 10-digit number.'), 400
+        return 'Owner contact must be a 10-digit number.'
     if not owner.get('aadhar') or not re.fullmatch(r'\d{12}', re.sub(r'\D', '', owner.get('aadhar', ''))):
-        return jsonify(ok=False, error='Aadhar number must contain 12 digits.'), 400
+        return 'Aadhar number must contain 12 digits.'
     if ptype not in {'individual', 'apartment', 'gated'}:
-        return jsonify(ok=False, error='Invalid property type.'), 400
+        return 'Invalid property type.'
     if not prop.get('name') or not prop.get('address'):
-        return jsonify(ok=False, error='Property name and address are required.'), 400
+        return 'Property name and address are required.'
     if not prop.get('map_location'):
-        return jsonify(ok=False, error='Map location URL is required.'), 400
+        return 'Map location URL is required.'
     if not construction.get('start') or not construction.get('end'):
-        return jsonify(ok=False, error='Construction start and end month/year are required.'), 400
-    if not request.files.getlist('overview_0') and not any(k.startswith('overview_') for k in request.files):
-        return jsonify(ok=False, error='Upload at least one property overview image.'), 400
+        return 'Construction start and end month/year are required.'
+
     if ptype == 'individual' and not structure.get('units'):
-        return jsonify(ok=False, error='Add all required units.'), 400
+        return 'Add all required units.'
     if ptype == 'apartment' and not structure.get('floors'):
-        return jsonify(ok=False, error='Add all required floors and units.'), 400
+        return 'Add all required floors and units.'
     if ptype == 'gated' and not structure.get('apartments'):
-        return jsonify(ok=False, error='Add all gated-community apartments, floors and units.'), 400
+        return 'Add all gated-community apartments, floors and units.'
 
-    property_obj = Property(
-        name=prop['name'].strip(), address=prop['address'].strip(), map_location=prop.get('map_location'),
-        latitude=normalize_number(prop.get('latitude'), None) if prop.get('latitude') not in ('', None) else None,
-        longitude=normalize_number(prop.get('longitude'), None) if prop.get('longitude') not in ('', None) else None,
-        owner_name=owner['name'].strip(), owner_contact=re.sub(r'\D', '', owner['contact']), owner_email=owner['email'].strip(),
-        owner_aadhar_encrypted=encrypt_aadhar(re.sub(r'\D', '', owner['aadhar'])), property_type=ptype,
-        structure_data=structure, property_documents=payload.get('documents', ''),
-        construction_completed=bool(construction.get('completed')), construction_start=construction.get('start'),
-        construction_end=construction.get('end'), important_details=payload.get('important_details', ''),
-        is_listed=bool(payload.get('publish')), created_by_id=current_user.id
-    )
-    db.session.add(property_obj)
-    db.session.flush()
+    if files_required:
+        has_new_overview = any(k.startswith('overview_') for k in request.files)
+        if not has_new_overview:
+            return 'Upload at least one property overview image.'
 
+    return None
+
+
+def _save_uploaded_images(property_obj):
+    """Store newly uploaded images as optimized WebP assets."""
     for key, file in request.files.items():
         if not file or not file.filename:
             continue
@@ -237,14 +231,286 @@ def property_wizard():
             data = process_image(file)
         except Exception:
             continue
+
+        filename = os.path.splitext(file.filename)[0] + '.webp'
         if key.startswith('overview_'):
-            db.session.add(ImageAsset(property_id=property_obj.id, scope='overview', filename=os.path.splitext(file.filename)[0] + '.webp', data=data))
+            db.session.add(ImageAsset(
+                property_id=property_obj.id,
+                scope='overview',
+                filename=filename,
+                data=data
+            ))
         elif key.startswith('unit_'):
             parts = key.split('_')
             unit_key = '_'.join(parts[1:-1]) if len(parts) > 2 else parts[1]
-            db.session.add(ImageAsset(property_id=property_obj.id, scope='unit', unit_key=unit_key, filename=os.path.splitext(file.filename)[0] + '.webp', data=data))
+            db.session.add(ImageAsset(
+                property_id=property_obj.id,
+                scope='unit',
+                unit_key=unit_key,
+                filename=filename,
+                data=data
+            ))
+
+
+def _apply_deleted_images(property_obj):
+    raw = request.form.get('deleted_image_ids', '[]')
+    try:
+        deleted_ids = {int(x) for x in json.loads(raw)}
+    except (TypeError, ValueError, json.JSONDecodeError):
+        deleted_ids = set()
+
+    if not deleted_ids:
+        return
+
+    for image in list(property_obj.images):
+        if image.id in deleted_ids:
+            db.session.delete(image)
+
+
+def _property_initial_data(property_obj):
+    return {
+        'id': property_obj.id,
+        'owner': {
+            'name': property_obj.owner_name,
+            'contact': property_obj.owner_contact,
+            'email': property_obj.owner_email,
+            'aadhar': decrypt_aadhar(property_obj.owner_aadhar_encrypted),
+        },
+        'property': {
+            'name': property_obj.name,
+            'address': property_obj.address,
+            'map_location': property_obj.map_location or '',
+            'latitude': property_obj.latitude,
+            'longitude': property_obj.longitude,
+        },
+        'property_type': property_obj.property_type,
+        'structure': property_obj.structure_data or {},
+        'documents': property_obj.property_documents or '',
+        'construction': {
+            'completed': bool(property_obj.construction_completed),
+            'start': property_obj.construction_start or '',
+            'end': property_obj.construction_end or '',
+        },
+        'important_details': property_obj.important_details or '',
+        'is_listed': bool(property_obj.is_listed),
+        'images': [
+            {
+                'id': image.id,
+                'scope': image.scope,
+                'unit_key': image.unit_key,
+                'filename': image.filename,
+                'url': url_for('image', image_id=image.id),
+            }
+            for image in property_obj.images
+        ],
+    }
+
+
+@app.route('/admin/property/new', methods=['GET', 'POST'])
+@app.route('/admin/property/<int:property_id>/edit', methods=['GET', 'POST'])
+@admin_required
+def property_wizard(property_id=None):
+    property_obj = db.session.get(Property, property_id) if property_id else None
+    if property_id and not property_obj:
+        abort(404)
+
+    if request.method == 'GET':
+        initial_data = _property_initial_data(property_obj) if property_obj else {
+            'id': None,
+            'owner': {'name': '', 'contact': '', 'email': '', 'aadhar': ''},
+            'property': {'name': '', 'address': '', 'map_location': '', 'latitude': '', 'longitude': ''},
+            'property_type': '',
+            'structure': {},
+            'documents': '',
+            'construction': {'completed': False, 'start': '', 'end': ''},
+            'important_details': '',
+            'is_listed': False,
+            'images': [],
+        }
+        return render_template(
+            'property_wizard.html',
+            editing=bool(property_obj),
+            property=property_obj,
+            initial_data=initial_data
+        )
+
+    payload = parse_json_form('payload')
+    validation_error = _validate_property_payload(payload, files_required=not bool(property_obj))
+    if validation_error:
+        return jsonify(ok=False, error=validation_error), 400
+
+    owner = payload['owner']
+    prop = payload['property']
+    ptype = payload['property_type']
+    construction = payload['construction']
+    structure = payload['structure']
+
+    if property_obj is None:
+        property_obj = Property(created_by_id=current_user.id)
+        db.session.add(property_obj)
+    else:
+        # If the admin changes property type, all submitted structure data becomes
+        # the new source of truth; images not explicitly deleted remain intact.
+        pass
+
+    property_obj.name = prop['name'].strip()
+    property_obj.address = prop['address'].strip()
+    property_obj.map_location = prop.get('map_location')
+    property_obj.latitude = normalize_number(prop.get('latitude'), None) if prop.get('latitude') not in ('', None) else None
+    property_obj.longitude = normalize_number(prop.get('longitude'), None) if prop.get('longitude') not in ('', None) else None
+    property_obj.owner_name = owner['name'].strip()
+    property_obj.owner_contact = re.sub(r'\D', '', owner['contact'])
+    property_obj.owner_email = owner['email'].strip()
+    property_obj.owner_aadhar_encrypted = encrypt_aadhar(re.sub(r'\D', '', owner['aadhar']))
+    property_obj.property_type = ptype
+    property_obj.structure_data = structure
+    property_obj.property_documents = payload.get('documents', '')
+    property_obj.construction_completed = bool(construction.get('completed'))
+    property_obj.construction_start = construction.get('start')
+    property_obj.construction_end = construction.get('end')
+    property_obj.important_details = payload.get('important_details', '')
+
+    # New properties are published by default; edited properties keep their
+    # current enabled/disabled state unless the admin explicitly asks to change it.
+    if property_id is None:
+        property_obj.is_listed = bool(payload.get('publish'))
+
+    db.session.flush()
+    _apply_deleted_images(property_obj)
+    db.session.flush()
+
+    # Never leave a property with zero overview images.
+    new_overview_count = sum(
+        1 for key, file in request.files.items()
+        if key.startswith('overview_') and file and file.filename
+    )
+    remaining_overview_count = ImageAsset.query.filter_by(
+        property_id=property_obj.id, scope='overview'
+    ).count()
+    if remaining_overview_count + new_overview_count == 0:
+        db.session.rollback()
+        return jsonify(ok=False, error='Keep at least one property overview image.'), 400
+
+    _save_uploaded_images(property_obj)
+    db.session.commit()
+
+    return jsonify(
+        ok=True,
+        redirect=url_for('admin_dashboard'),
+        message='Property updated successfully.' if property_id else 'Property listed successfully.'
+    )
+
+
+@app.post('/admin/property/<int:property_id>/toggle')
+@admin_required
+def toggle_property(property_id):
+    property_obj = db.session.get(Property, property_id)
+    if not property_obj:
+        abort(404)
+    property_obj.is_listed = not property_obj.is_listed
+    db.session.commit()
+    return jsonify(ok=True, is_listed=property_obj.is_listed)
+
+
+@app.post('/admin/property/<int:property_id>/delete')
+@admin_required
+def delete_property(property_id):
+    property_obj = db.session.get(Property, property_id)
+    if not property_obj:
+        abort(404)
+    db.session.delete(property_obj)
     db.session.commit()
     return jsonify(ok=True, redirect=url_for('admin_dashboard'))
+
+
+@app.get('/admin/property/<int:property_id>/download')
+@admin_required
+def download_property(property_id):
+    property_obj = db.session.get(Property, property_id)
+    if not property_obj:
+        abort(404)
+
+    overview = [i for i in property_obj.images if i.scope == 'overview']
+    unit_images = [i for i in property_obj.images if i.scope == 'unit']
+
+    export_data = {
+        'export_version': '1.0',
+        'property': {
+            'id': property_obj.id,
+            'name': property_obj.name,
+            'address': property_obj.address,
+            'map_location': property_obj.map_location,
+            'latitude': property_obj.latitude,
+            'longitude': property_obj.longitude,
+            'property_type': property_obj.property_type,
+            'is_enabled': property_obj.is_listed,
+            'created_at': property_obj.created_at.isoformat() if property_obj.created_at else None,
+            'updated_at': property_obj.updated_at.isoformat() if property_obj.updated_at else None,
+        },
+        'owner': {
+            'name': property_obj.owner_name,
+            'contact': property_obj.owner_contact,
+            'email': property_obj.owner_email,
+            'aadhar': decrypt_aadhar(property_obj.owner_aadhar_encrypted),
+        },
+        'documents': property_obj.property_documents or '',
+        'construction': {
+            'completed': property_obj.construction_completed,
+            'start': property_obj.construction_start,
+            'end': property_obj.construction_end,
+        },
+        'important_details': property_obj.important_details or '',
+        'structure': property_obj.structure_data or {},
+        'images': {
+            'overview': [i.filename for i in overview],
+            'unit_images': [
+                {'unit_key': i.unit_key, 'filename': i.filename}
+                for i in unit_images
+            ],
+        },
+    }
+
+    safe_name = re.sub(r'[^A-Za-z0-9_-]+', '_', property_obj.name).strip('_') or f'property_{property_obj.id}'
+    memory = io.BytesIO()
+    with zipfile.ZipFile(memory, 'w', zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr(
+            'property_data.json',
+            json.dumps(export_data, indent=2, ensure_ascii=False)
+        )
+
+        report_html = render_template(
+            'property_export.html',
+            property=property_obj,
+            structure=property_obj.structure_data or {},
+            overview=overview,
+            unit_images=unit_images,
+            aadhar=decrypt_aadhar(property_obj.owner_aadhar_encrypted),
+        )
+        archive.writestr('property_report.html', report_html)
+
+        for index, image in enumerate(overview, 1):
+            archive.writestr(
+                f'images/overview/{index:02d}_{image.filename}',
+                image.data
+            )
+
+        unit_counters = {}
+        for image in unit_images:
+            unit_folder = re.sub(r'[^A-Za-z0-9_-]+', '_', image.unit_key or 'unit')
+            unit_counters[unit_folder] = unit_counters.get(unit_folder, 0) + 1
+            index = unit_counters[unit_folder]
+            archive.writestr(
+                f'images/units/{unit_folder}/{index:02d}_{image.filename}',
+                image.data
+            )
+
+    memory.seek(0)
+    return send_file(
+        memory,
+        mimetype='application/zip',
+        as_attachment=True,
+        download_name=f'{safe_name}_Topvio_export.zip'
+    )
 
 @app.route('/property/<int:property_id>')
 def property_detail(property_id):

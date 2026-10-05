@@ -15,7 +15,11 @@ A Render-ready Flask + PostgreSQL property discovery MVP.
 - Gated community workflow supports a different number of floors and units for every apartment/floor.
 - Sq yd → sq m automatic conversion in the admin wizard.
 - Responsive dual-handle price range slider (₹ lakh / ₹ crore display).
-- Per-image add, replace and delete controls for unit and property overview galleries before publishing.
+- Per-image add, replace and delete controls for unit and property overview galleries before publishing or while editing.
+- Admin can modify all 8 property steps after creation without rebuilding the property.
+- Admin can enable/disable each property; disabled properties are hidden from user search and direct property pages.
+- Admin can permanently delete a property and its uploaded images.
+- Admin can download a complete ZIP export containing a readable HTML report, structured JSON, and all WebP images.
 - Multiple unit images and property overview images.
 - Server-side conversion of uploaded images to WebP.
 - PostgreSQL persistence.
