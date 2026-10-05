@@ -3,6 +3,10 @@ let selectedType = '';
 let structure = {};
 let builtType = '';
 const imageState = { overview: [], units: {} };
+const initialData = window.TOPVIO_INITIAL || {};
+const initialStructure = initialData.structure || {};
+let useInitialStructure = !!initialData.id;
+const deletedImageIds = new Set();
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
 const SQM_PER_SQYD = 0.83612736;
@@ -86,46 +90,55 @@ function buildStructure() {
   if (selectedType === 'individual') {
     root.innerHTML = `<div class="builder-toolbar"><div><span class="eyebrow">INDIVIDUAL HOUSE</span><h4>Configure each unit</h4><p>Every unit gets its own type, facing, size, price and photo gallery.</p></div><div class="count-control"><label>Number of units</label><select id="unitCount" class="form-select">${Array.from({length:100},(_,i)=>`<option>${i+1}</option>`).join('')}</select></div></div><div id="unitList"></div>`;
     const c = $('unitCount');
-    c.value = Math.min(100, Math.max(1, Object.keys(imageState.units).filter(k => k.startsWith('individual_')).length || 1));
+    const count = useInitialStructure ? (initialStructure.units?.length || 1) : (Object.keys(imageState.units).filter(k => k.startsWith('individual_')).length || 1);
+    c.value = Math.min(100, Math.max(1, count));
     c.addEventListener('change', () => renderIndividual(+c.value));
-    renderIndividual(+c.value);
+    renderIndividual(+c.value, useInitialStructure ? (initialStructure.units || []) : []);
   }
 
   if (selectedType === 'apartment') {
     root.innerHTML = `<div class="builder-toolbar"><div><span class="eyebrow">APARTMENTS</span><h4>Build floor by floor</h4><p>Set the number of units on every floor, then configure each unit independently.</p></div><div class="count-control"><label>Number of floors</label><select id="floorCount" class="form-select">${Array.from({length:40},(_,i)=>`<option>${i+1}</option>`).join('')}</select></div></div><div id="floorList"></div>`;
     const c = $('floorCount');
-    const existingFloors = Object.keys(imageState.units).filter(k => k.startsWith('floor_')).map(k => +k.split('_')[1]).filter(Boolean);
-    c.value = Math.min(40, Math.max(1, Math.max(...existingFloors, 1)));
+    const count = useInitialStructure ? (initialStructure.floors?.length || 1) : Math.max(...Object.keys(imageState.units).filter(k => k.startsWith('floor_')).map(k => +k.split('_')[1]).filter(Boolean), 1);
+    c.value = Math.min(40, Math.max(1, count));
     c.addEventListener('change', () => renderApartmentFloors(+c.value));
-    renderApartmentFloors(+c.value);
+    renderApartmentFloors(+c.value, useInitialStructure ? (initialStructure.floors || []) : []);
   }
 
   if (selectedType === 'gated') {
-    root.innerHTML = `<div class="builder-toolbar"><div><span class="eyebrow">GATED COMMUNITY</span><h4>Configure every apartment</h4><p>Each apartment can have a different number of floors and each floor can have a different number of units.</p></div><div class="count-control"><label>Number of apartments</label><select id="aptCount" class="form-select">${Array.from({length:100},(_,i)=>`<option>${i+1}</option>`).join('')}</select></div></div><div id="apartmentList"></div>`;
+    root.innerHTML = `<div class="builder-toolbar"><div><span class="eyebrow">GATED COMMUNITY</span><h4>Configure every apartment</h4><p>Each apartment can have a different number of floors and each floor can have a different number of units.</p></div><div class="count-control"><label>Number of apartments</label><select id="aptCount" class="form-select">${Array.from({length:25},(_,i)=>`<option>${i+1}</option>`).join('')}</select></div></div><div id="apartmentList"></div>`;
     const c = $('aptCount');
+    const count = useInitialStructure ? (initialStructure.apartments?.length || 1) : 1;
+    c.value = Math.min(25, Math.max(1, count));
     c.addEventListener('change', () => renderGated(+c.value));
-    c.value = 1;
-    renderGated(+c.value);
+    renderGated(+c.value, useInitialStructure ? (initialStructure.apartments || []) : []);
   }
   builtType = selectedType;
+  useInitialStructure = false;
 }
 
-function renderIndividual(n) {
+function renderIndividual(n, seedUnits = []) {
   const old = [...document.querySelectorAll('#unitList .unit-editor')].map(e => ({key:e.dataset.unit, data:readUnit(e)}));
+  const seed = seedUnits.map((data, i) => ({key:data.label || `individual_${i+1}`, data}));
+  const source = old.length ? old : seed;
   $('unitList').innerHTML = Array.from({length:n}, (_,i) => unitFields(`individual_${i+1}`, `Unit ${i+1}`)).join('');
-  hydrateImagesAndFields(old);
+  hydrateImagesAndFields(source);
 }
 
-function renderApartmentFloors(n) {
+function renderApartmentFloors(n, seedFloors = []) {
   const old = collectApartmentDraft();
+  const seeded = {};
+  seedFloors.forEach(f => { seeded[+f.floor] = f; });
   $('floorList').innerHTML = Array.from({length:n}, (_,i) => {
     const floorNo = i + 1;
-    const count = old[floorNo]?.number_units || 1;
+    const source = old[floorNo] || seeded[floorNo];
+    const count = Number(source?.number_units || source?.units?.length || 1);
     return `<div class="floor-card" data-floor="${floorNo}"><div class="floor-head"><div><span class="floor-number">${floorNo}</span><div><b>Floor ${floorNo}</b><small>Configure units on this floor</small></div></div><div class="count-control compact"><label>Units on floor</label><select class="floor-unit-count" data-floor="${floorNo}">${Array.from({length:100},(_,u)=>`<option value="${u+1}" ${u+1===count?'selected':''}>${u+1}</option>`).join('')}</select></div></div><div class="floor-units">${Array.from({length:count},(_,u)=>unitFields(`floor_${floorNo}_unit_${u+1}`, `Unit ${u+1}`, `Floor ${floorNo}`)).join('')}</div></div>`;
   }).join('');
   document.querySelectorAll('.floor-unit-count').forEach(sel => sel.addEventListener('change', e => renderFloorUnits(+e.target.dataset.floor, +e.target.value)));
   const oldUnits = Object.values(old).flatMap(x => x.units || []).map(data => ({key:data.label, data}));
-  hydrateImagesAndFields(oldUnits);
+  const seedUnits = seedFloors.flatMap(f => f.units || []).map(data => ({key:data.label, data}));
+  hydrateImagesAndFields(oldUnits.length ? oldUnits : seedUnits);
 }
 
 function renderFloorUnits(floorNo, count) {
@@ -135,17 +148,22 @@ function renderFloorUnits(floorNo, count) {
   hydrateImagesAndFields(old);
 }
 
-function renderGated(apartmentCount) {
+function renderGated(apartmentCount, seedApartments = []) {
   const old = collectGatedDraft();
+  const seeded = {};
+  seedApartments.forEach(a => { seeded[+a.apartment] = a; });
   $('apartmentList').innerHTML = Array.from({length:apartmentCount}, (_,ai) => {
     const apartmentNo = ai + 1;
-    const floorCount = old[apartmentNo]?.length || 1;
-    return `<div class="apartment-card" data-apartment="${apartmentNo}"><div class="apartment-head"><div><span class="eyebrow">APARTMENT ${apartmentNo}</span><h4>Apartment ${apartmentNo}</h4><p>Configure floors and units independently.</p></div><div class="count-control"><label>Number of floors</label><select class="apartment-floor-count" data-apartment="${apartmentNo}">${Array.from({length:40},(_,f)=>`<option value="${f+1}" ${f+1===floorCount?'selected':''}>${f+1}</option>`).join('')}</select></div></div><div class="gated-floor-list">${renderGatedFloorsHtml(apartmentNo, floorCount, old[apartmentNo])}</div></div>`;
+    const source = old[apartmentNo] || seeded[apartmentNo];
+    const floorCount = source?.length || source?.floors?.length || 1;
+    const floors = Array.isArray(source) ? source : (source?.floors || []);
+    return `<div class="apartment-card" data-apartment="${apartmentNo}"><div class="apartment-head"><div><span class="eyebrow">APARTMENT ${apartmentNo}</span><h4>Apartment ${apartmentNo}</h4><p>Configure floors and units independently.</p></div><div class="count-control"><label>Number of floors</label><select class="apartment-floor-count" data-apartment="${apartmentNo}">${Array.from({length:40},(_,f)=>`<option value="${f+1}" ${f+1===floorCount?'selected':''}>${f+1}</option>`).join('')}</select></div></div><div class="gated-floor-list">${renderGatedFloorsHtml(apartmentNo, floorCount, floors)}</div></div>`;
   }).join('');
   document.querySelectorAll('.apartment-floor-count').forEach(sel => sel.addEventListener('change', e => renderGatedFloors(+e.target.dataset.apartment, +e.target.value)));
   document.querySelectorAll('.gated-floor-unit-count').forEach(sel => sel.addEventListener('change', e => renderGatedFloorUnits(+e.target.dataset.apartment, +e.target.dataset.floor, +e.target.value)));
   const oldUnits = Object.values(old).flatMap(floors => floors.flatMap(f => f.units || [])).map(data => ({key:data.label, data}));
-  hydrateImagesAndFields(oldUnits);
+  const seedUnits = seedApartments.flatMap(a => a.floors || []).flatMap(f => f.units || []).map(data => ({key:data.label, data}));
+  hydrateImagesAndFields(oldUnits.length ? oldUnits : seedUnits);
 }
 
 function renderGatedFloorsHtml(apartmentNo, floorCount, oldApartment = []) {
@@ -329,8 +347,10 @@ function renderImageGrid(key) {
   if (!grid) return;
   const files = key === 'overview' ? imageState.overview : (imageState.units[key] || []);
   grid.innerHTML = files.map((file, index) => {
-    const url = URL.createObjectURL(file);
-    return `<div class="image-card"><img src="${url}" alt="${esc(file.name)}"><div class="image-card-body"><span title="${esc(file.name)}">${esc(file.name)}</span><div class="image-actions"><button type="button" class="btn btn-sm btn-light image-replace" data-key="${esc(key)}" data-index="${index}">Replace</button><button type="button" class="btn btn-sm btn-outline-danger image-delete" data-key="${esc(key)}" data-index="${index}">Delete</button></div></div></div>`;
+    const url = file.existing ? file.url : URL.createObjectURL(file);
+    const label = file.name || file.filename || 'Image';
+    const badge = file.existing ? '<span class="existing-image-badge">Saved</span>' : '<span class="existing-image-badge new">New</span>';
+    return `<div class="image-card"><div class="image-card-image"><img src="${url}" alt="${esc(label)}">${badge}</div><div class="image-card-body"><span title="${esc(label)}">${esc(label)}</span><div class="image-actions"><button type="button" class="btn btn-sm btn-light image-replace" data-key="${esc(key)}" data-index="${index}">Replace</button><button type="button" class="btn btn-sm btn-outline-danger image-delete" data-key="${esc(key)}" data-index="${index}">Delete</button></div></div></div>`;
   }).join('');
   if (!files.length) grid.innerHTML = '<div class="image-empty">No images selected yet.</div>';
 }
@@ -347,12 +367,16 @@ function addFiles(key, files) {
 function replaceFile(key, index, file) {
   if (!file || !file.type.startsWith('image/')) return;
   const files = getFiles(key).slice();
+  const old = files[index];
+  if (old?.existing && old.id) deletedImageIds.add(Number(old.id));
   files[index] = file;
   setFiles(key, files);
 }
 
 function removeFile(key, index) {
   const files = getFiles(key).slice();
+  const old = files[index];
+  if (old?.existing && old.id) deletedImageIds.add(Number(old.id));
   files.splice(index, 1);
   setFiles(key, files);
 }
@@ -387,7 +411,14 @@ function hasCompleteUnit(e) {
 
 function pruneImageState() {
   const active = new Set([...document.querySelectorAll('.unit-editor')].map(e => e.dataset.unit));
-  Object.keys(imageState.units).forEach(key => { if (!active.has(key)) delete imageState.units[key]; });
+  Object.keys(imageState.units).forEach(key => {
+    if (!active.has(key)) {
+      (imageState.units[key] || []).forEach(file => {
+        if (file.existing && file.id) deletedImageIds.add(Number(file.id));
+      });
+      delete imageState.units[key];
+    }
+  });
 }
 
 function buildReview() {
@@ -444,9 +475,10 @@ $('propertyForm').addEventListener('submit', async e => {
     publish:true
   };
   form.append('payload', JSON.stringify(payload));
-  imageState.overview.forEach((file,i) => form.append(`overview_${i}`, file));
-  Object.entries(imageState.units).forEach(([key, files]) => files.forEach((file,i) => form.append(`unit_${key}_${i}`, file)));
-  $('publishBtn').disabled = true; $('publishBtn').textContent = 'Publishing…';
+  form.append('deleted_image_ids', JSON.stringify([...deletedImageIds]));
+  imageState.overview.filter(file => !file.existing).forEach((file,i) => form.append(`overview_${i}`, file));
+  Object.entries(imageState.units).forEach(([key, files]) => files.filter(file => !file.existing).forEach((file,i) => form.append(`unit_${key}_${i}`, file)));
+  $('publishBtn').disabled = true; $('publishBtn').textContent = initialData.id ? 'Saving…' : 'Publishing…';
   try {
     const res = await fetch(location.href, {method:'POST', body:form});
     const data = await res.json().catch(() => ({ok:false,error:'Unexpected server response'}));
@@ -454,8 +486,45 @@ $('propertyForm').addEventListener('submit', async e => {
     else throw new Error(data.error || 'Could not save property.');
   } catch (err) {
     alert(err.message);
-    $('publishBtn').disabled = false; $('publishBtn').textContent = '✓ List property';
+    $('publishBtn').disabled = false; $('publishBtn').textContent = initialData.id ? '✓ Save changes' : '✓ List property';
   }
 });
 
+function hydrateInitialData() {
+  const owner = initialData.owner || {};
+  const prop = initialData.property || {};
+  $('ownerName').value = owner.name || '';
+  $('ownerContact').value = owner.contact || '';
+  $('ownerEmail').value = owner.email || '';
+  $('ownerAadhar').value = owner.aadhar || '';
+  $('propertyName').value = prop.name || '';
+  $('propertyAddress').value = prop.address || '';
+  $('mapLocation').value = prop.map_location || '';
+  $('latitude').value = prop.latitude ?? '';
+  $('longitude').value = prop.longitude ?? '';
+  $('documents').value = initialData.documents || '';
+  $('constructionCompleted').checked = !!initialData.construction?.completed;
+  $('constructionStart').value = initialData.construction?.start || '';
+  $('constructionEnd').value = initialData.construction?.end || '';
+  $('importantDetails').value = initialData.important_details || '';
+
+  selectedType = initialData.property_type || '';
+  if (selectedType) {
+    const radio = document.querySelector(`input[name=ptype][value="${CSS.escape(selectedType)}"]`);
+    if (radio) radio.checked = true;
+  }
+
+  (initialData.images || []).forEach(img => {
+    const item = {existing:true, id:img.id, filename:img.filename, name:img.filename, url:img.url};
+    if (img.scope === 'overview') imageState.overview.push(item);
+    else if (img.scope === 'unit' && img.unit_key) {
+      if (!imageState.units[img.unit_key]) imageState.units[img.unit_key] = [];
+      imageState.units[img.unit_key].push(item);
+    }
+  });
+  renderImageGrid('overview');
+  $('constructionEndLabel').textContent = $('constructionCompleted').checked ? 'Completed · month & year' : 'Expected completion · month & year';
+}
+
+hydrateInitialData();
 setStep(1);
