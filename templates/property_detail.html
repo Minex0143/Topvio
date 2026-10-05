@@ -92,9 +92,17 @@
           {% endfor %}
         {% else %}
           {% for a in data.get('apartments', []) %}
-            {% set apt_available=a.get('floors', [])|map(attribute='units')|sum(start=[])|selectattr('available','equalto',true)|list %}
-            {% if apt_available|length %}
-              <div class="apartment-group"><div class="floor-heading"><strong>Apartment {{ a.get('apartment') }}</strong><span>{{ apt_available|length }} available</span></div>
+            {# Count available units defensively. Older/partially configured floor records may not have a units key. #}
+            {% set apt_available = namespace(count=0) %}
+            {% for f in a.get('floors', []) %}
+              {% for u in f.get('units', []) %}
+                {% if u.get('available', true) %}
+                  {% set apt_available.count = apt_available.count + 1 %}
+                {% endif %}
+              {% endfor %}
+            {% endfor %}
+            {% if apt_available.count > 0 %}
+              <div class="apartment-group"><div class="floor-heading"><strong>Apartment {{ a.get('apartment') }}</strong><span>{{ apt_available.count }} available</span></div>
               {% for f in a.get('floors', []) %}
                 {% set floor_available=f.get('units', [])|selectattr('available','equalto',true)|list %}
                 {% if floor_available|length %}<div class="floor-group nested"><div class="floor-heading"><strong>Floor {{ f.get('floor') }}</strong><span>{{ floor_available|length }} available</span></div>
