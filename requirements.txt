@@ -5,6 +5,6 @@ Authlib
 requests
 Pillow
 cryptography
-psycopg2-binary
+psycopg[binary]
 gunicorn
 python-dotenv
