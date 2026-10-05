@@ -227,7 +227,9 @@ function readUnit(e) {
     pricing_min:minLakh * 100000,
     pricing_max:maxLakh * 100000,
     pricing_min_lakh:minLakh,
-    pricing_max_lakh:maxLakh
+    pricing_max_lakh:maxLakh,
+    // Inventory state is preserved when an admin later modifies any wizard step.
+    available:e.dataset.available !== 'false'
   };
 }
 
@@ -279,6 +281,7 @@ function hydrateImagesAndFields(oldUnits = []) {
 
 function setUnitFields(editor, data) {
   if (!data) return;
+  editor.dataset.available = data.available === false ? 'false' : 'true';
   const type = editor.querySelector('.u-type');
   const facing = editor.querySelector('.u-facing');
   const yards = editor.querySelector('.u-yards');
