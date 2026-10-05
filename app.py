@@ -112,6 +112,60 @@ def parse_json_form(name):
     except json.JSONDecodeError:
         abort(400, description=f'Invalid JSON in {name}')
 
+def unit_is_available(unit):
+    """Inventory flag is backward-compatible: old units are available by default."""
+    return bool(unit.get('available', True))
+
+
+def _inventory_unit(structure, property_type, unit_key, available):
+    """Update one unit's inventory state inside the JSONB structure."""
+    if not unit_key:
+        return False
+
+    def update_units(units):
+        for unit in units or []:
+            if unit.get('label') == unit_key:
+                unit['available'] = bool(available)
+                return True
+        return False
+
+    if property_type == 'individual':
+        return update_units(structure.get('units', []))
+
+    if property_type == 'apartment':
+        for floor in structure.get('floors', []):
+            if update_units(floor.get('units', [])):
+                return True
+        return False
+
+    if property_type == 'gated':
+        for apartment in structure.get('apartments', []):
+            for floor in apartment.get('floors', []):
+                if update_units(floor.get('units', [])):
+                    return True
+        return False
+
+    return False
+
+
+def _inventory_summary(structure, property_type):
+    """Return total/available counts for the admin inventory screen."""
+    units = []
+    if property_type == 'individual':
+        units = structure.get('units', [])
+    elif property_type == 'apartment':
+        units = [u for f in structure.get('floors', []) for u in f.get('units', [])]
+    elif property_type == 'gated':
+        units = [
+            u
+            for a in structure.get('apartments', [])
+            for f in a.get('floors', [])
+            for u in f.get('units', [])
+        ]
+    available = sum(1 for u in units if unit_is_available(u))
+    return {'total': len(units), 'available': available, 'unavailable': len(units) - available}
+
+
 @app.context_processor
 def inject_globals():
     return {'app_name': 'Topvio'}
@@ -399,6 +453,45 @@ def property_wizard(property_id=None):
         redirect=url_for('admin_dashboard'),
         message='Property updated successfully.' if property_id else 'Property listed successfully.'
     )
+
+
+@app.get('/admin/property/<int:property_id>/inventory')
+@admin_required
+def property_inventory(property_id):
+    property_obj = db.session.get(Property, property_id)
+    if not property_obj:
+        abort(404)
+    structure = property_obj.structure_data or {}
+    summary = _inventory_summary(structure, property_obj.property_type)
+    return render_template(
+        'property_inventory.html',
+        property=property_obj,
+        structure=structure,
+        summary=summary,
+        unit_is_available=unit_is_available,
+    )
+
+
+@app.post('/admin/property/<int:property_id>/inventory/update')
+@admin_required
+def update_inventory(property_id):
+    property_obj = db.session.get(Property, property_id)
+    if not property_obj:
+        abort(404)
+
+    payload = request.get_json(silent=True) or {}
+    unit_key = str(payload.get('unit_key', '')).strip()
+    available = bool(payload.get('available', False))
+
+    structure = json.loads(json.dumps(property_obj.structure_data or {}))
+    if not _inventory_unit(structure, property_obj.property_type, unit_key, available):
+        return jsonify(ok=False, error='Unit was not found in this property inventory.'), 404
+
+    property_obj.structure_data = structure
+    db.session.commit()
+
+    summary = _inventory_summary(structure, property_obj.property_type)
+    return jsonify(ok=True, unit_key=unit_key, available=available, summary=summary)
 
 
 @app.post('/admin/property/<int:property_id>/toggle')
