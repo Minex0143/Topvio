@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: topvio
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: topvio-db
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_REDIRECT_URI
+        sync: false
+      - key: ADMIN_EMAILS
+        sync: false
+      - key: AADHAR_ENCRYPTION_KEY
+        sync: false
+
+databases:
+  - name: topvio-db
+    plan: free
+    databaseName: topvio
+    user: topvio

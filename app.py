@@ -1,0 +1,283 @@
+import base64
+import io
+import json
+import math
+import os
+import re
+from functools import wraps
+from urllib.parse import quote
+
+from authlib.integrations.flask_client import OAuth
+from cryptography.fernet import Fernet
+from flask import Flask, abort, flash, jsonify, redirect, render_template, request, send_file, session, url_for
+from flask_login import LoginManager, current_user, login_required, login_user, logout_user
+from PIL import Image, ImageOps
+from dotenv import load_dotenv
+
+from models import db, User, Property, ImageAsset
+
+load_dotenv()
+
+app = Flask(__name__)
+app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'change-this-secret-in-production')
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'sqlite:///topvio.db').replace('postgres://', 'postgresql://', 1)
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['MAX_CONTENT_LENGTH'] = 15 * 1024 * 1024
+app.config['GOOGLE_CLIENT_ID'] = os.getenv('GOOGLE_CLIENT_ID', '')
+app.config['GOOGLE_CLIENT_SECRET'] = os.getenv('GOOGLE_CLIENT_SECRET', '')
+app.config['GOOGLE_REDIRECT_URI'] = os.getenv('GOOGLE_REDIRECT_URI', '')
+app.config['ADMIN_EMAILS'] = {x.strip().lower() for x in os.getenv('ADMIN_EMAILS', '').split(',') if x.strip()}
+
+fernet_key = os.getenv('AADHAR_ENCRYPTION_KEY', '')
+if fernet_key:
+    fernet = Fernet(fernet_key.encode())
+else:
+    fernet = None
+
+db.init_app(app)
+login_manager = LoginManager(app)
+login_manager.login_view = 'login'
+oauth = OAuth(app)
+
+google = oauth.register(
+    name='google',
+    client_id=app.config['GOOGLE_CLIENT_ID'],
+    client_secret=app.config['GOOGLE_CLIENT_SECRET'],
+    server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
+    client_kwargs={'scope': 'openid email profile'},
+)
+
+@login_manager.user_loader
+def load_user(user_id):
+    return db.session.get(User, int(user_id))
+
+with app.app_context():
+    db.create_all()
+
+def admin_required(fn):
+    @wraps(fn)
+    @login_required
+    def wrapper(*args, **kwargs):
+        if current_user.role != 'admin':
+            abort(403)
+        return fn(*args, **kwargs)
+    return wrapper
+
+def encrypt_aadhar(value):
+    if not value:
+        return None
+    if not fernet:
+        return value
+    return fernet.encrypt(value.encode()).decode()
+
+def decrypt_aadhar(value):
+    if not value:
+        return ''
+    if not fernet:
+        return value
+    try:
+        return fernet.decrypt(value.encode()).decode()
+    except Exception:
+        return ''
+
+def normalize_number(value, default=0):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+def haversine_km(lat1, lon1, lat2, lon2):
+    r = 6371.0
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dp = math.radians(lat2 - lat1)
+    dl = math.radians(lon2 - lon1)
+    a = math.sin(dp/2)**2 + math.cos(p1)*math.cos(p2)*math.sin(dl/2)**2
+    return 2*r*math.asin(math.sqrt(a))
+
+def process_image(file_storage):
+    raw = file_storage.read()
+    image = Image.open(io.BytesIO(raw))
+    image = ImageOps.exif_transpose(image)
+    if image.mode not in ('RGB', 'RGBA'):
+        image = image.convert('RGB')
+    out = io.BytesIO()
+    image.save(out, format='WEBP', quality=82, method=6)
+    return out.getvalue()
+
+def parse_json_form(name):
+    try:
+        return json.loads(request.form.get(name, '{}'))
+    except json.JSONDecodeError:
+        abort(400, description=f'Invalid JSON in {name}')
+
+@app.context_processor
+def inject_globals():
+    return {'app_name': 'Topvio'}
+
+@app.route('/')
+def index():
+    q = request.args.get('q', '').strip()
+    user_lat = request.args.get('lat', type=float)
+    user_lng = request.args.get('lng', type=float)
+    query = Property.query.filter_by(is_listed=True)
+    properties = query.order_by(Property.created_at.desc()).all()
+    if q:
+        ql = q.lower()
+        filtered = []
+        for p in properties:
+            hay = f'{p.name} {p.address}'.lower()
+            address_match = ql in hay
+            nearby = False
+            if user_lat is not None and user_lng is not None and p.latitude is not None and p.longitude is not None:
+                nearby = haversine_km(user_lat, user_lng, p.latitude, p.longitude) <= 50
+            if address_match or nearby:
+                filtered.append(p)
+        properties = filtered
+    return render_template('index.html', properties=properties, q=q, user_lat=user_lat, user_lng=user_lng)
+
+@app.route('/login')
+def login():
+    next_url = request.args.get('next') or url_for('index')
+    session['next_after_login'] = next_url
+    if not app.config['GOOGLE_CLIENT_ID'] or not app.config['GOOGLE_CLIENT_SECRET']:
+        return render_template('login.html', config_missing=True)
+    redirect_uri = app.config['GOOGLE_REDIRECT_URI'] or url_for('auth_callback', _external=True)
+    return google.authorize_redirect(redirect_uri)
+
+@app.route('/auth/google/callback')
+def auth_callback():
+    token = google.authorize_access_token()
+    userinfo = token.get('userinfo')
+    if not userinfo:
+        userinfo = google.get('https://openidconnect.googleapis.com/v1/userinfo').json()
+    email = (userinfo.get('email') or '').lower()
+    if not email:
+        abort(400, description='Google did not provide an email address.')
+    user = User.query.filter_by(email=email).first()
+    role = 'admin' if email in app.config['ADMIN_EMAILS'] else 'user'
+    if not user:
+        user = User(google_id=userinfo.get('sub'), email=email, name=userinfo.get('name') or email, picture=userinfo.get('picture'), role=role)
+        db.session.add(user)
+    else:
+        user.google_id = userinfo.get('sub') or user.google_id
+        user.name = userinfo.get('name') or user.name
+        user.picture = userinfo.get('picture') or user.picture
+        if email in app.config['ADMIN_EMAILS']:
+            user.role = 'admin'
+    db.session.commit()
+    login_user(user)
+    next_url = session.pop('next_after_login', None) or url_for('index')
+    return redirect(next_url)
+
+@app.route('/logout')
+def logout():
+    logout_user()
+    return redirect(url_for('index'))
+
+@app.route('/admin')
+@admin_required
+def admin_dashboard():
+    properties = Property.query.order_by(Property.created_at.desc()).all()
+    return render_template('admin_dashboard.html', properties=properties)
+
+@app.route('/admin/property/new', methods=['GET', 'POST'])
+@admin_required
+def property_wizard():
+    if request.method == 'GET':
+        return render_template('property_wizard.html')
+    payload = parse_json_form('payload')
+    required = ['owner', 'property', 'property_type', 'structure', 'construction']
+    if not all(payload.get(k) for k in required):
+        return jsonify(ok=False, error='Complete all required steps before listing the property.'), 400
+
+    owner = payload['owner']
+    prop = payload['property']
+    ptype = payload['property_type']
+    construction = payload['construction']
+    structure = payload['structure']
+    if not re.fullmatch(r'\d{10}', re.sub(r'\D', '', owner.get('contact', ''))):
+        return jsonify(ok=False, error='Owner contact must be a 10-digit number.'), 400
+    if not owner.get('aadhar') or not re.fullmatch(r'\d{12}', re.sub(r'\D', '', owner.get('aadhar', ''))):
+        return jsonify(ok=False, error='Aadhar number must contain 12 digits.'), 400
+    if ptype not in {'individual', 'apartment', 'gated'}:
+        return jsonify(ok=False, error='Invalid property type.'), 400
+    if not prop.get('name') or not prop.get('address'):
+        return jsonify(ok=False, error='Property name and address are required.'), 400
+    if not prop.get('map_location'):
+        return jsonify(ok=False, error='Map location URL is required.'), 400
+    if not construction.get('start') or not construction.get('end'):
+        return jsonify(ok=False, error='Construction start and end month/year are required.'), 400
+    if not request.files.getlist('overview_0') and not any(k.startswith('overview_') for k in request.files):
+        return jsonify(ok=False, error='Upload at least one property overview image.'), 400
+    if not structure.get('units') and ptype in {'individual', 'apartment'}:
+        return jsonify(ok=False, error='Add all required units/floors.'), 400
+    if ptype == 'gated' and not structure.get('apartments'):
+        return jsonify(ok=False, error='Add all gated-community apartments and floors.'), 400
+
+    property_obj = Property(
+        name=prop['name'].strip(), address=prop['address'].strip(), map_location=prop.get('map_location'),
+        latitude=normalize_number(prop.get('latitude'), None) if prop.get('latitude') not in ('', None) else None,
+        longitude=normalize_number(prop.get('longitude'), None) if prop.get('longitude') not in ('', None) else None,
+        owner_name=owner['name'].strip(), owner_contact=re.sub(r'\D', '', owner['contact']), owner_email=owner['email'].strip(),
+        owner_aadhar_encrypted=encrypt_aadhar(re.sub(r'\D', '', owner['aadhar'])), property_type=ptype,
+        structure_data=structure, property_documents=payload.get('documents', ''),
+        construction_completed=bool(construction.get('completed')), construction_start=construction.get('start'),
+        construction_end=construction.get('end'), important_details=payload.get('important_details', ''),
+        is_listed=bool(payload.get('publish')), created_by_id=current_user.id
+    )
+    db.session.add(property_obj)
+    db.session.flush()
+
+    for key, file in request.files.items():
+        if not file or not file.filename:
+            continue
+        try:
+            data = process_image(file)
+        except Exception:
+            continue
+        if key.startswith('overview_'):
+            db.session.add(ImageAsset(property_id=property_obj.id, scope='overview', filename=os.path.splitext(file.filename)[0] + '.webp', data=data))
+        elif key.startswith('unit_'):
+            parts = key.split('_')
+            unit_key = '_'.join(parts[1:-1]) if len(parts) > 2 else parts[1]
+            db.session.add(ImageAsset(property_id=property_obj.id, scope='unit', unit_key=unit_key, filename=os.path.splitext(file.filename)[0] + '.webp', data=data))
+    db.session.commit()
+    return jsonify(ok=True, redirect=url_for('admin_dashboard'))
+
+@app.route('/property/<int:property_id>')
+def property_detail(property_id):
+    property_obj = db.session.get(Property, property_id)
+    if not property_obj or not property_obj.is_listed:
+        abort(404)
+    if not current_user.is_authenticated:
+        return redirect(url_for('login', next=url_for('property_detail', property_id=property_id)))
+    overview = [i for i in property_obj.images if i.scope == 'overview']
+    units = [i for i in property_obj.images if i.scope == 'unit']
+    return render_template('property_detail.html', property=property_obj, overview=overview, unit_images=units, aadhar=decrypt_aadhar(property_obj.owner_aadhar_encrypted))
+
+@app.route('/image/<int:image_id>')
+def image(image_id):
+    asset = db.session.get(ImageAsset, image_id)
+    if not asset:
+        abort(404)
+    return send_file(io.BytesIO(asset.data), mimetype=asset.mime_type, download_name=asset.filename, max_age=86400)
+
+@app.errorhandler(403)
+def forbidden(_):
+    return render_template('error.html', code=403, message='You do not have permission to access this page.'), 403
+
+@app.errorhandler(404)
+def not_found(_):
+    return render_template('error.html', code=404, message='Page or property not found.'), 404
+
+@app.errorhandler(413)
+def too_large(_):
+    return render_template('error.html', code=413, message='Image upload is too large. Please use smaller images.'), 413
+
+@app.errorhandler(500)
+def server_error(_):
+    db.session.rollback()
+    return render_template('error.html', code=500, message='Something went wrong. Check the Render logs for details.'), 500
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=int(os.getenv('PORT', 5000)), debug=True)
