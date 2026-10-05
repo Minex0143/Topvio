@@ -209,10 +209,12 @@ def property_wizard():
         return jsonify(ok=False, error='Construction start and end month/year are required.'), 400
     if not request.files.getlist('overview_0') and not any(k.startswith('overview_') for k in request.files):
         return jsonify(ok=False, error='Upload at least one property overview image.'), 400
-    if not structure.get('units') and ptype in {'individual', 'apartment'}:
-        return jsonify(ok=False, error='Add all required units/floors.'), 400
+    if ptype == 'individual' and not structure.get('units'):
+        return jsonify(ok=False, error='Add all required units.'), 400
+    if ptype == 'apartment' and not structure.get('floors'):
+        return jsonify(ok=False, error='Add all required floors and units.'), 400
     if ptype == 'gated' and not structure.get('apartments'):
-        return jsonify(ok=False, error='Add all gated-community apartments and floors.'), 400
+        return jsonify(ok=False, error='Add all gated-community apartments, floors and units.'), 400
 
     property_obj = Property(
         name=prop['name'].strip(), address=prop['address'].strip(), map_location=prop.get('map_location'),

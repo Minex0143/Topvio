@@ -11,6 +11,11 @@ A Render-ready Flask + PostgreSQL property discovery MVP.
 - Apartments: 1–40 floors.
 - Gated community: 1–25 apartments and 1–40 floors.
 - Unit type 1 BHK–6 BHK, facing, size in sq yd/sq m, dimensions and pricing range.
+- Apartment workflow supports a different number of units on every floor.
+- Gated community workflow supports a different number of floors and units for every apartment/floor.
+- Sq yd → sq m automatic conversion in the admin wizard.
+- Responsive dual-handle price range slider (₹ lakh / ₹ crore display).
+- Per-image add, replace and delete controls for unit and property overview galleries before publishing.
 - Multiple unit images and property overview images.
 - Server-side conversion of uploaded images to WebP.
 - PostgreSQL persistence.
