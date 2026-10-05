@@ -1,2 +1,127 @@
-{% extends 'base.html' %}{% block content %}<div class="container py-5"><div class="d-flex justify-content-between align-items-center mb-4"><div><div class="eyebrow">ADMIN</div><h1 class="h2 mb-1">Property list</h1><p class="text-secondary mb-0">Create, review and publish properties.</p></div><a class="btn btn-dark" href="{{ url_for('property_wizard') }}">+ List property</a></div>
-<div class="table-responsive bg-white rounded-4 border"><table class="table align-middle mb-0"><thead><tr><th>Property</th><th>Type</th><th>Owner</th><th>Construction</th><th>Status</th><th></th></tr></thead><tbody>{% for p in properties %}<tr><td><b>{{ p.name }}</b><div class="small text-secondary">{{ p.address }}</div></td><td>{{ p.property_type|title }}</td><td>{{ p.owner_name }}<div class="small text-secondary">{{ p.owner_contact }}</div></td><td>{{ 'Completed' if p.construction_completed else 'In progress' }}</td><td>{% if p.is_listed %}<span class="badge text-bg-success">Listed</span>{% else %}<span class="badge text-bg-warning">Draft</span>{% endif %}</td><td>{% if p.is_listed %}<a class="btn btn-sm btn-outline-dark" href="{{ url_for('property_detail', property_id=p.id) }}">View</a>{% else %}<span class="text-secondary small">Created</span>{% endif %}</td></tr>{% else %}<tr><td colspan="6" class="text-center py-5 text-secondary">No properties yet.</td></tr>{% endfor %}</tbody></table></div></div>{% endblock %}
+{% extends 'base.html' %}
+{% block content %}
+<div class="container-fluid admin-shell py-4 py-lg-5">
+  <div class="container-xxl">
+    <div class="admin-head d-flex flex-column flex-lg-row justify-content-between align-items-lg-end gap-3 mb-4">
+      <div>
+        <div class="eyebrow">ADMIN CONTROL CENTER</div>
+        <h1 class="display-6 fw-bold mb-1">Properties</h1>
+        <p class="text-secondary mb-0">Modify every step, download a complete archive, remove properties, or control visibility.</p>
+      </div>
+      <a class="btn btn-dark btn-lg rounded-4 px-4" href="{{ url_for('property_wizard') }}">＋ List property</a>
+    </div>
+
+    <div class="row g-3 mb-4">
+      <div class="col-6 col-lg-3"><div class="admin-stat"><span>Total</span><strong>{{ properties|length }}</strong></div></div>
+      <div class="col-6 col-lg-3"><div class="admin-stat"><span>Enabled</span><strong>{{ properties|selectattr('is_listed')|list|length }}</strong></div></div>
+      <div class="col-6 col-lg-3"><div class="admin-stat"><span>Disabled</span><strong>{{ properties|rejectattr('is_listed')|list|length }}</strong></div></div>
+      <div class="col-6 col-lg-3"><div class="admin-stat"><span>Images</span><strong>{{ properties|map(attribute='images')|map('length')|sum }}</strong></div></div>
+    </div>
+
+    <div class="admin-property-list">
+      {% for p in properties %}
+      <article class="admin-property-card" id="property-card-{{ p.id }}">
+        <div class="admin-property-main">
+          <div class="admin-property-thumb">
+            {% set cover = (p.images|selectattr('scope','equalto','overview')|list|first) %}
+            {% if cover %}
+              <img loading="lazy" src="{{ url_for('image', image_id=cover.id) }}" alt="{{ p.name }}">
+            {% else %}
+              <span>TV</span>
+            {% endif %}
+          </div>
+          <div class="admin-property-info">
+            <div class="d-flex flex-wrap gap-2 align-items-center mb-1">
+              <h3>{{ p.name }}</h3>
+              {% if p.is_listed %}<span class="status-pill enabled">Enabled</span>{% else %}<span class="status-pill disabled">Disabled</span>{% endif %}
+            </div>
+            <p class="address">{{ p.address }}</p>
+            <div class="property-meta">
+              <span>{{ p.property_type|replace('_',' ')|title }}</span>
+              <span>Owner: {{ p.owner_name }}</span>
+              <span>{{ p.images|length }} image{{ '' if p.images|length == 1 else 's' }}</span>
+              <span>{{ 'Completed' if p.construction_completed else 'In progress' }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="admin-property-actions">
+          <div class="form-check form-switch visibility-switch">
+            <input class="form-check-input property-toggle" type="checkbox" role="switch"
+                   id="toggle-{{ p.id }}" data-id="{{ p.id }}" {% if p.is_listed %}checked{% endif %}>
+            <label class="form-check-label" for="toggle-{{ p.id }}">Visible to users</label>
+          </div>
+          <div class="action-buttons">
+            <a class="btn btn-outline-dark" href="{{ url_for('property_wizard', property_id=p.id) }}">✎ Modify</a>
+            <a class="btn btn-outline-primary" href="{{ url_for('download_property', property_id=p.id) }}">↓ Download</a>
+            {% if p.is_listed %}
+              <a class="btn btn-outline-secondary" href="{{ url_for('property_detail', property_id=p.id) }}">View</a>
+            {% endif %}
+            <button type="button" class="btn btn-outline-danger delete-property" data-id="{{ p.id }}" data-name="{{ p.name|e }}">Delete</button>
+          </div>
+        </div>
+      </article>
+      {% else %}
+      <div class="empty-state">
+        <div class="builder-icon">⌂</div>
+        <h4>No properties yet</h4>
+        <p class="text-secondary">Create your first property to start building your catalogue.</p>
+        <a class="btn btn-dark rounded-3" href="{{ url_for('property_wizard') }}">List property</a>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+document.querySelectorAll('.property-toggle').forEach(toggle => {
+  toggle.addEventListener('change', async () => {
+    const id = toggle.dataset.id;
+    toggle.disabled = true;
+    try {
+      const response = await fetch(`/admin/property/${id}/toggle`, {method:'POST'});
+      const data = await response.json();
+      if (!data.ok) throw new Error(data.error || 'Could not change visibility.');
+      const card = document.querySelector(`#property-card-${id}`);
+      const pill = card.querySelector('.status-pill');
+      pill.className = `status-pill ${data.is_listed ? 'enabled' : 'disabled'}`;
+      pill.textContent = data.is_listed ? 'Enabled' : 'Disabled';
+      const view = card.querySelector('.action-buttons a.btn-outline-secondary');
+      if (data.is_listed && !view) {
+        const link = document.createElement('a');
+        link.className = 'btn btn-outline-secondary';
+        link.href = `/property/${id}`;
+        link.textContent = 'View';
+        card.querySelector('.action-buttons').insertBefore(link, card.querySelector('.delete-property'));
+      } else if (!data.is_listed && view) {
+        view.remove();
+      }
+    } catch (err) {
+      toggle.checked = !toggle.checked;
+      alert(err.message);
+    } finally {
+      toggle.disabled = false;
+    }
+  });
+});
+
+document.querySelectorAll('.delete-property').forEach(button => {
+  button.addEventListener('click', async () => {
+    const id = button.dataset.id;
+    const name = button.dataset.name;
+    if (!confirm(`Delete "${name}" permanently?\n\nThis removes all property data and uploaded images.`)) return;
+    button.disabled = true;
+    try {
+      const response = await fetch(`/admin/property/${id}/delete`, {method:'POST'});
+      const data = await response.json();
+      if (!data.ok) throw new Error(data.error || 'Could not delete property.');
+      document.querySelector(`#property-card-${id}`)?.remove();
+    } catch (err) {
+      alert(err.message);
+      button.disabled = false;
+    }
+  });
+});
+</script>
+{% endblock %}

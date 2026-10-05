@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Topvio Property Export · {{ property.name }}</title>
+<style>
+body{font-family:Arial,sans-serif;color:#17202a;background:#f6f7f9;margin:0;padding:32px}
+main{max-width:1100px;margin:auto;background:#fff;padding:36px;border-radius:18px}
+h1{margin-bottom:4px}h2{margin-top:32px;border-bottom:2px solid #eee;padding-bottom:8px}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.card{border:1px solid #e4e6eb;border-radius:12px;padding:14px}
+.label{font-size:12px;color:#68707d;text-transform:uppercase;font-weight:bold}
+.value{margin-top:5px;white-space:pre-wrap}
+.gallery{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.gallery img{width:100%;height:150px;object-fit:cover;border-radius:10px}
+.unit{border:1px solid #ddd;border-radius:14px;padding:16px;margin:12px 0}
+.unit-gallery{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:10px}
+.unit-gallery img{width:100%;height:100px;object-fit:cover;border-radius:8px}
+.badge{display:inline-block;padding:5px 9px;border-radius:99px;background:#eee;font-size:12px}
+@media(max-width:700px){body{padding:12px}main{padding:20px}.grid,.gallery{grid-template-columns:1fr 1fr}.unit-gallery{grid-template-columns:1fr 1fr}}
+</style>
+</head>
+<body>
+<main>
+<div class="label">TOPVIO PROPERTY EXPORT</div>
+<h1>{{ property.name }}</h1>
+<p>{{ property.address }}</p>
+<p><span class="badge">{{ property.property_type|replace('_',' ')|title }}</span>
+<span class="badge">{{ 'Enabled / visible' if property.is_listed else 'Disabled / hidden' }}</span></p>
+
+<h2>Step 1 · Owner & Property</h2>
+<div class="grid">
+<div class="card"><div class="label">Owner name</div><div class="value">{{ property.owner_name }}</div></div>
+<div class="card"><div class="label">Owner contact</div><div class="value">{{ property.owner_contact }}</div></div>
+<div class="card"><div class="label">Owner email</div><div class="value">{{ property.owner_email }}</div></div>
+<div class="card"><div class="label">Aadhar</div><div class="value">{{ aadhar or '—' }}</div></div>
+<div class="card"><div class="label">Property name</div><div class="value">{{ property.name }}</div></div>
+<div class="card"><div class="label">Address</div><div class="value">{{ property.address }}</div></div>
+<div class="card"><div class="label">Map location</div><div class="value">{{ property.map_location or '—' }}</div></div>
+<div class="card"><div class="label">Coordinates</div><div class="value">{{ property.latitude or '—' }}, {{ property.longitude or '—' }}</div></div>
+</div>
+
+<h2>Step 2 · Property Type</h2>
+<p>{{ property.property_type|replace('_',' ')|title }}</p>
+
+<h2>Step 3 · Units, Floors & Pricing</h2>
+{% if property.property_type == 'individual' %}
+{% for u in structure.units or [] %}
+<div class="unit"><h3>Unit {{ loop.index }}</h3>
+<div class="grid"><div><b>Type:</b> {{ u.type }}</div><div><b>Facing:</b> {{ u.facing }}</div>
+<div><b>Size:</b> {{ u.size_yards }} sq yd / {{ u.size_sqm }} sq m</div><div><b>Dimensions:</b> {{ u.dimensions }}</div>
+<div><b>Price:</b> ₹{{ '{:,.0f}'.format((u.pricing_min or 0)|float) }} – ₹{{ '{:,.0f}'.format((u.pricing_max or 0)|float) }}</div></div>
+{% set imgs=unit_images|selectattr('unit_key','equalto','individual_' ~ loop.index)|list %}
+{% if imgs %}<div class="unit-gallery">{% for im in imgs %}<img src="images/units/individual_{{ loop.index }}/{{ '%02d'|format(loop.index) }}_{{ im.filename }}" alt="{{ im.filename }}">{% endfor %}</div>{% endif %}
+</div>
+{% endfor %}
+{% elif property.property_type == 'apartment' %}
+{% for f in structure.floors or [] %}
+<div class="unit"><h3>Floor {{ f.floor }} · {{ f.number_units }} units</h3>
+{% for u in f.units or [] %}<div class="card"><b>Unit {{ loop.index }}</b> · {{ u.type }} · {{ u.facing }}<br>{{ u.size_yards }} sq yd / {{ u.size_sqm }} sq m · {{ u.dimensions }}<br>₹{{ '{:,.0f}'.format((u.pricing_min or 0)|float) }} – ₹{{ '{:,.0f}'.format((u.pricing_max or 0)|float) }}
+{% set key='floor_' ~ f.floor ~ '_unit_' ~ loop.index %}{% set imgs=unit_images|selectattr('unit_key','equalto',key)|list %}
+{% if imgs %}<div class="unit-gallery">{% for im in imgs %}<img src="images/units/{{ key }}/{{ '%02d'|format(loop.index) }}_{{ im.filename }}" alt="{{ im.filename }}">{% endfor %}</div>{% endif %}</div>{% endfor %}
+</div>
+{% endfor %}
+{% else %}
+{% for a in structure.apartments or [] %}
+<div class="unit"><h3>Apartment {{ a.apartment }}</h3>
+{% for f in a.floors or [] %}<h4>Floor {{ f.floor }} · {{ f.number_units }} units</h4>
+{% for u in f.units or [] %}<div class="card"><b>Unit {{ loop.index }}</b> · {{ u.type }} · {{ u.facing }}<br>{{ u.size_yards }} sq yd / {{ u.size_sqm }} sq m · {{ u.dimensions }}<br>₹{{ '{:,.0f}'.format((u.pricing_min or 0)|float) }} – ₹{{ '{:,.0f}'.format((u.pricing_max or 0)|float) }}
+{% set key='apartment_' ~ a.apartment ~ '_floor_' ~ f.floor ~ '_unit_' ~ loop.index %}{% set imgs=unit_images|selectattr('unit_key','equalto',key)|list %}
+{% if imgs %}<div class="unit-gallery">{% for im in imgs %}<img src="images/units/{{ key }}/{{ '%02d'|format(loop.index) }}_{{ im.filename }}" alt="{{ im.filename }}">{% endfor %}</div>{% endif %}</div>{% endfor %}
+{% endfor %}</div>
+{% endfor %}
+{% endif %}
+
+<h2>Step 4 · Documents</h2>
+<div class="card">{{ property.property_documents or 'No document names entered.' }}</div>
+
+<h2>Step 5 · Construction</h2>
+<div class="grid"><div class="card"><b>Status:</b> {{ 'Completed' if property.construction_completed else 'Under construction' }}</div>
+<div class="card"><b>Start:</b> {{ property.construction_start or '—' }}<br><b>Completion:</b> {{ property.construction_end or '—' }}</div></div>
+
+<h2>Step 6 · Important Details</h2>
+<div class="card">{{ property.important_details or 'No additional details.' }}</div>
+
+<h2>Step 7 · Property Overview Images</h2>
+<div class="gallery">
+{% for im in overview %}<img src="images/overview/{{ '%02d'|format(loop.index) }}_{{ im.filename }}" alt="{{ im.filename }}">{% else %}<p>No overview images.</p>{% endfor %}
+</div>
+
+<h2>Step 8 · Export Information</h2>
+<div class="grid">
+<div class="card"><b>Property ID:</b> {{ property.id }}</div>
+<div class="card"><b>Created:</b> {{ property.created_at }}</div>
+<div class="card"><b>Last updated:</b> {{ property.updated_at }}</div>
+<div class="card"><b>Image count:</b> {{ property.images|length }}</div>
+</div>
+</main>
+</body>
+</html>

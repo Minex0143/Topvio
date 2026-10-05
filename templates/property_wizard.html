@@ -3,8 +3,8 @@
 <div class="container-fluid wizard-shell py-4 py-lg-5">
   <div class="wizard-container">
     <div class="wizard-head d-flex flex-column flex-lg-row justify-content-between gap-3 align-items-lg-end">
-      <div><div class="eyebrow">ADMIN PROPERTY LISTING</div><h1>List a property</h1><p class="text-secondary mb-0">A cleaner, mobile-first workflow for building every unit and floor.</p></div>
-      <div class="wizard-help"><span>●</span> Changes are kept while you move between steps</div>
+      <div><div class="eyebrow">ADMIN PROPERTY MANAGEMENT</div><h1>{{ 'Modify property' if editing else 'List a property' }}</h1><p class="text-secondary mb-0">{{ 'Update any step, floor, unit, price or image. Existing images are preserved unless you replace or delete them.' if editing else 'A cleaner, mobile-first workflow for building every unit and floor.' }}</p></div>
+      <div class="wizard-help"><span>●</span> {{ 'Editing existing property · changes save together' if editing else 'Changes are kept while you move between steps' }}</div>
     </div>
 
     <div class="stepper" id="stepper">
@@ -73,13 +73,18 @@
         <section class="wizard-step" data-step="8">
           <div class="step-title"><span>08</span><div><div class="eyebrow">FINAL CHECK</div><h3>Review & publish</h3><p>Confirm the summary below before listing the property.</p></div></div>
           <div id="reviewSummary" class="review-box"></div>
-          <div class="alert alert-success mt-4 mb-0"><b>Ready to publish.</b> Your images will be converted to WebP before they are stored.</div>
+          <div class="alert alert-success mt-4 mb-0"><b>{{ 'Ready to save changes.' if editing else 'Ready to publish.' }}</b> Your images will be converted to WebP before they are stored.</div>
         </section>
 
-        <div class="wizard-actions"><button type="button" id="prevBtn" class="btn btn-outline-dark" disabled>← Back</button><div class="d-flex gap-2"><button type="button" id="nextBtn" class="btn btn-dark">Continue →</button><button type="submit" id="publishBtn" class="btn btn-success d-none">✓ List property</button></div></div>
+        <div class="wizard-actions"><button type="button" id="prevBtn" class="btn btn-outline-dark" disabled>← Back</button><div class="d-flex gap-2"><button type="button" id="nextBtn" class="btn btn-dark">Continue →</button><button type="submit" id="publishBtn" class="btn btn-success d-none">{{ '✓ Save changes' if editing else '✓ List property' }}</button></div></div>
       </div>
     </form>
   </div>
 </div>
 {% endblock %}
-{% block scripts %}<script src="{{ url_for('static', filename='js/wizard.js') }}"></script>{% endblock %}
+{% block scripts %}
+<script>
+window.TOPVIO_INITIAL = {{ initial_data|tojson }};
+</script>
+<script src="{{ url_for('static', filename='js/wizard.js') }}"></script>
+{% endblock %}
