@@ -20,7 +20,7 @@
 
     <div class="admin-property-list">
       {% for p in properties %}
-      <article class="admin-property-card" id="property-card-{{ p.id }}">
+      <article class="admin-property-card admin-clickable" id="property-card-{{ p.id }}" data-property-url="{{ url_for('property_detail', property_id=p.id) }}" data-enabled="{{ '1' if p.is_listed else '0' }}">
         <div class="admin-property-main">
           <div class="admin-property-thumb">
             {% set cover = (p.images|selectattr('scope','equalto','overview')|list|first) %}
@@ -38,7 +38,7 @@
             <p class="address">{{ p.address }}</p>
             <div class="property-meta">
               <span>{{ p.property_type|replace('_',' ')|title }}</span>
-              <span>Owner: {{ p.owner_name }}</span>
+              
               <span>{{ p.images|length }} image{{ '' if p.images|length == 1 else 's' }}</span>
               <span>{{ 'Completed' if p.construction_completed else 'In progress' }}</span>
             </div>
@@ -55,9 +55,6 @@
             <a class="btn btn-outline-dark" href="{{ url_for('property_wizard', property_id=p.id) }}">✎ Modify</a>
             <a class="btn btn-outline-warning" href="{{ url_for('property_inventory', property_id=p.id) }}">▦ Update inventory</a>
             <a class="btn btn-outline-primary" href="{{ url_for('download_property', property_id=p.id) }}">↓ Download</a>
-            {% if p.is_listed %}
-              <a class="btn btn-outline-secondary" href="{{ url_for('property_detail', property_id=p.id) }}">View</a>
-            {% endif %}
             <button type="button" class="btn btn-outline-danger delete-property" data-id="{{ p.id }}" data-name="{{ p.name|e }}">Delete</button>
           </div>
         </div>
@@ -76,6 +73,12 @@
 {% endblock %}
 {% block scripts %}
 <script>
+document.querySelectorAll('.admin-clickable').forEach(card=>{
+  card.addEventListener('click', e=>{
+    if(e.target.closest('a,button,input,label,.form-check')) return;
+    if(card.dataset.enabled==='1') window.location.href=card.dataset.propertyUrl;
+  });
+});
 document.querySelectorAll('.property-toggle').forEach(toggle => {
   toggle.addEventListener('change', async () => {
     const id = toggle.dataset.id;

@@ -1,191 +1,175 @@
 {% extends 'base.html' %}
 {% block content %}
-<div class="container py-5">
-  <div class="d-flex justify-content-between gap-3 align-items-start flex-wrap">
+<div class="container py-4 py-lg-5 property-detail-page">
+  <div class="detail-hero">
     <div>
-      <div class="eyebrow">{{ property.property_type|replace('_',' ')|upper }}</div>
+      <span class="eyebrow">{{ property.property_type|replace('_',' ')|upper }}</span>
       <h1>{{ property.name }}</h1>
-      <p class="text-secondary">{{ property.address }}</p>
+      <p class="detail-address">⌖ {{ property.address }}</p>
     </div>
-    {% if property.map_location %}
-      <a class="btn btn-outline-dark" target="_blank" rel="noopener" href="{{ property.map_location }}">Open map</a>
-    {% endif %}
+    {% if property.map_location %}<a class="map-btn" target="_blank" rel="noopener" href="{{ property.map_location }}">⌖ Open map</a>{% endif %}
   </div>
 
-  <div class="row g-3 mt-2">
+  <div class="overview-gallery mt-4" id="overviewGallery">
     {% for img in overview %}
-      <div class="col-6 col-md-3">
-        <img class="gallery-img" loading="lazy" src="{{ url_for('image', image_id=img.id) }}" alt="{{ property.name }}">
-      </div>
+      <button type="button" class="gallery-tile" data-gallery-index="{{ loop.index0 }}" data-gallery-src="{{ url_for('image', image_id=img.id) }}" aria-label="Open image {{ loop.index }}">
+        <img src="{{ url_for('image', image_id=img.id) }}" loading="lazy" alt="{{ property.name }} image {{ loop.index }}">
+        {% if loop.first %}<span class="gallery-cover">Property photos</span>{% endif %}
+      </button>
     {% else %}
-      <div class="col-12"><div class="placeholder-image large">No overview images</div></div>
+      <div class="placeholder-image large">No overview images</div>
     {% endfor %}
   </div>
 
-  <div class="row g-4 mt-2">
+  <div class="row g-4 mt-1">
     <div class="col-lg-8">
-      <div class="section-card">
-        <h4>Property overview</h4>
-        <div class="detail-grid">
-          <div><small>Type</small><b>{{ property.property_type|replace('_',' ')|title }}</b></div>
-          <div><small>Construction</small><b>{{ 'Completed' if property.construction_completed else 'Under construction' }}</b></div>
-          <div><small>Started</small><b>{{ property.construction_start or '—' }}</b></div>
-          <div><small>{{ 'Completed' if property.construction_completed else 'Expected completion' }}</small><b>{{ property.construction_end or '—' }}</b></div>
-        </div>
-        {% if property.important_details %}<hr><p class="mb-0">{{ property.important_details }}</p>{% endif %}
-      </div>
-
-      <div class="section-card mt-4">
-        <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap">
+      <section class="section-card overview-card">
+        <div class="section-title-row"><div><span class="section-kicker">AT A GLANCE</span><h3>Property overview</h3></div><span class="type-badge">{{ property.property_type|replace('_',' ')|title }}</span></div>
+        <div class="construction-banner {{ 'done' if property.construction_completed else 'building' }}">
+          <div class="construction-icon">{{ '✓' if property.construction_completed else '◷' }}</div>
           <div>
-            <h4 class="mb-1">Available options</h4>
-            <p class="text-secondary mb-0 small">Only units currently available in inventory are shown.</p>
+            {% if property.construction_completed %}
+              <strong>Construction completed</strong>
+              <span>Started {{ property.construction_start or '—' }} <i>•</i> Completed {{ property.construction_end or '—' }}</span>
+            {% else %}
+              <strong>Under construction</strong>
+              <span>Started {{ property.construction_start or '—' }} <i>•</i> Expected completion {{ property.construction_end or '—' }}</span>
+            {% endif %}
           </div>
+        </div>
+        {% if property.important_details %}
+          <div class="important-details"><span>Important details</span><p>{{ property.important_details }}</p></div>
+        {% endif %}
+      </section>
+
+      <section class="section-card mt-4 available-section">
+        <div class="section-title-row">
+          <div><span class="section-kicker">INVENTORY</span><h3>Available options</h3><p>Choose an available unit and connect with the team.</p></div>
+          <div class="availability-summary" id="availabilitySummary">Available options</div>
         </div>
 
         {% set data = property.structure_data or {} %}
+        <div class="available-filters" id="availableFilters">
+          <button class="filter-chip active" type="button" data-filter="all">All</button>
+          <button class="filter-chip" type="button" data-filter="1 BHK">1 BHK</button>
+          <button class="filter-chip" type="button" data-filter="2 BHK">2 BHK</button>
+          <button class="filter-chip" type="button" data-filter="3 BHK">3 BHK</button>
+          <button class="filter-chip" type="button" data-filter="4 BHK">4 BHK</button>
+          <button class="filter-chip" type="button" data-filter="5 BHK">5 BHK</button>
+          <button class="filter-chip" type="button" data-filter="6 BHK">6 BHK</button>
+        </div>
 
+        <div id="availableOptions">
         {% if property.property_type == 'individual' %}
-          {% set ns = namespace(count=0) %}
-          {% for u in data.get('units', []) %}
-            {% if u.get('available', true) %}
-              {% set ns.count = ns.count + 1 %}
-              <div class="unit-card">
-                <div class="d-flex justify-content-between gap-2 flex-wrap">
-                  <b>{{ u.get('label', 'individual_' ~ loop.index)|replace('_',' ')|title }}</b>
-                  <span>{{ u.get('type','')|upper }} · {{ u.get('facing','') }}</span>
-                </div>
-                <div class="small text-secondary mt-2">{{ u.get('size_yards','') }} sq yd · {{ u.get('size_sqm','') }} sq m · {{ u.get('dimensions','') }}</div>
-                <div class="fw-semibold mt-2">₹{{ '{:,.0f}'.format((u.get('pricing_min',0) or 0)|float) }}{% if u.get('pricing_max') %} – ₹{{ '{:,.0f}'.format((u.get('pricing_max') or 0)|float) }}{% endif %}</div>
-
-                {% set key = u.get('label', 'individual_' ~ loop.index) %}
-                {% set uimgs = unit_images|selectattr('unit_key','equalto',key)|list %}
-                {% if uimgs %}
-                  <div class="row g-2 mt-2">
-                    {% for im in uimgs %}
-                      <div class="col-4"><img class="unit-img" src="{{ url_for('image', image_id=im.id) }}" loading="lazy" alt="{{ key }}"></div>
-                    {% endfor %}
-                  </div>
-                {% endif %}
-                <a class="btn btn-success btn-sm mt-3" target="_blank"
-                   href="{{ 'https://wa.me/' ~ (property.owner_contact|replace('+','')) ~ '?text=' ~ ('Topvio enquiry: ' ~ property.name ~ ' - ' ~ key ~ ' (' ~ u.get('type','') ~ ', ' ~ u.get('facing','') ~ ')')|urlencode }}">
-                  Connect with team
-                </a>
+          {% for u in data.get('units', []) if u.get('available', true) %}
+            {% set key=u.get('label','individual_' ~ loop.index) %}
+            <article class="option-card inventory-option" data-type="{{ u.get('type','') }}">
+              <div class="option-top"><div><span class="option-label">UNIT</span><h4>{{ key|replace('_',' ')|title }}</h4></div><span class="available-badge">● Available</span></div>
+              <div class="option-facts"><span>{{ u.get('type','') }}</span><span>{{ u.get('facing','') }} facing</span><span>{{ u.get('size_yards','') }} sq yd</span><span>{{ u.get('size_sqm','') }} sq m</span><span>{{ u.get('dimensions','') }}</span></div>
+              <div class="option-bottom"><strong>₹{{ '{:,.0f}'.format((u.get('pricing_min',0) or 0)|float) }}{% if u.get('pricing_max') %} – ₹{{ '{:,.0f}'.format((u.get('pricing_max') or 0)|float) }}{% endif %}</strong>
+              {% set uimgs=unit_images|selectattr('unit_key','equalto',key)|list %}
+              {% if uimgs %}<div class="unit-thumb-row">{% for im in uimgs %}<button type="button" class="unit-thumb" data-gallery-src="{{ url_for('image', image_id=im.id) }}"><img src="{{ url_for('image', image_id=im.id) }}" loading="lazy" alt="{{ key }}"></button>{% endfor %}</div>{% endif %}
               </div>
-            {% endif %}
+              <a class="connect-btn" target="_blank" rel="noopener" href="{{ 'https://wa.me/' ~ (property.owner_contact|replace('+','')) ~ '?text=' ~ ('Topvio enquiry: ' ~ property.name ~ ' - ' ~ key ~ ' (' ~ u.get('type','') ~ ', ' ~ u.get('facing','') ~ ')')|urlencode }}">Connect with team <span>→</span></a>
+            </article>
           {% endfor %}
-          {% if ns.count == 0 %}<div class="empty-state mt-3">No units are currently available.</div>{% endif %}
-
         {% elif property.property_type == 'apartment' %}
-          {% set total_available = namespace(count=0) %}
           {% for f in data.get('floors', []) %}
-            {% set floor_ns = namespace(count=0) %}
-            {% for u in f.get('units', []) %}
-              {% if u.get('available', true) %}{% set floor_ns.count = floor_ns.count + 1 %}{% set total_available.count = total_available.count + 1 %}{% endif %}
-            {% endfor %}
-            {% if floor_ns.count %}
-              <div class="unit-card">
-                <div class="d-flex justify-content-between gap-2 flex-wrap">
-                  <b>Floor {{ f.get('floor') }}</b>
-                  <span>{{ floor_ns.count }} available unit{{ '' if floor_ns.count == 1 else 's' }}</span>
-                </div>
-                {% for u in f.get('units', []) %}
-                  {% if u.get('available', true) %}
-                    {% set key = u.get('label', 'floor_' ~ f.get('floor') ~ '_unit_' ~ loop.index) %}
-                    <div class="border rounded-3 p-3 mt-2">
-                      <div class="d-flex justify-content-between gap-2 flex-wrap">
-                        <b>{{ key|replace('_',' ')|title }}</b>
-                        <span>{{ u.get('type','')|upper }} · {{ u.get('facing','') }}</span>
-                      </div>
-                      <div class="small text-secondary mt-1">{{ u.get('size_yards','') }} sq yd · {{ u.get('size_sqm','') }} sq m · {{ u.get('dimensions','') }}</div>
-                      <div class="fw-semibold mt-1">₹{{ '{:,.0f}'.format((u.get('pricing_min',0) or 0)|float) }}{% if u.get('pricing_max') %} – ₹{{ '{:,.0f}'.format((u.get('pricing_max') or 0)|float) }}{% endif %}</div>
-                      {% set uimgs=unit_images|selectattr('unit_key','equalto',key)|list %}
-                      {% if uimgs %}
-                        <div class="row g-2 mt-2">
-                          {% for im in uimgs %}<div class="col-4"><img class="unit-img" src="{{ url_for('image', image_id=im.id) }}" loading="lazy" alt="{{ key }}"></div>{% endfor %}
-                        </div>
-                      {% endif %}
-                      <a class="btn btn-success btn-sm mt-2" target="_blank"
-                         href="{{ 'https://wa.me/' ~ (property.owner_contact|replace('+','')) ~ '?text=' ~ ('Topvio enquiry: ' ~ property.name ~ ' - ' ~ key ~ ' (' ~ u.get('type','') ~ ', ' ~ u.get('facing','') ~ ')')|urlencode }}">
-                        Connect with team
-                      </a>
-                    </div>
-                  {% endif %}
-                {% endfor %}
-              </div>
+            {% set floor_available=f.get('units', [])|selectattr('available','equalto',true)|list %}
+            {% if floor_available|length %}
+              <div class="floor-group"><div class="floor-heading"><strong>Floor {{ f.get('floor') }}</strong><span>{{ floor_available|length }} available</span></div>
+              {% for u in f.get('units', []) if u.get('available', true) %}
+                {% set key=u.get('label','floor_' ~ f.get('floor') ~ '_unit_' ~ loop.index) %}
+                <article class="option-card inventory-option" data-type="{{ u.get('type','') }}">
+                  <div class="option-top"><div><span class="option-label">UNIT</span><h4>{{ key|replace('_',' ')|title }}</h4></div><span class="available-badge">● Available</span></div>
+                  <div class="option-facts"><span>{{ u.get('type','') }}</span><span>{{ u.get('facing','') }} facing</span><span>{{ u.get('size_yards','') }} sq yd</span><span>{{ u.get('size_sqm','') }} sq m</span><span>{{ u.get('dimensions','') }}</span></div>
+                  <div class="option-bottom"><strong>₹{{ '{:,.0f}'.format((u.get('pricing_min',0) or 0)|float) }}{% if u.get('pricing_max') %} – ₹{{ '{:,.0f}'.format((u.get('pricing_max') or 0)|float) }}{% endif %}</strong>
+                  {% set uimgs=unit_images|selectattr('unit_key','equalto',key)|list %}{% if uimgs %}<div class="unit-thumb-row">{% for im in uimgs %}<button type="button" class="unit-thumb" data-gallery-src="{{ url_for('image', image_id=im.id) }}"><img src="{{ url_for('image', image_id=im.id) }}" loading="lazy"></button>{% endfor %}</div>{% endif %}</div>
+                  <a class="connect-btn" target="_blank" rel="noopener" href="{{ 'https://wa.me/' ~ (property.owner_contact|replace('+','')) ~ '?text=' ~ ('Topvio enquiry: ' ~ property.name ~ ' - ' ~ key ~ ' (' ~ u.get('type','') ~ ', ' ~ u.get('facing','') ~ ')')|urlencode }}">Connect with team <span>→</span></a>
+                </article>
+              {% endfor %}</div>
             {% endif %}
           {% endfor %}
-          {% if total_available.count == 0 %}<div class="empty-state mt-3">No units are currently available.</div>{% endif %}
-
         {% else %}
-          {% set total_available = namespace(count=0) %}
           {% for a in data.get('apartments', []) %}
-            {% set apartment_ns = namespace(count=0) %}
-            {% for f in a.get('floors', []) %}
-              {% for u in f.get('units', []) %}
-                {% if u.get('available', true) %}{% set apartment_ns.count = apartment_ns.count + 1 %}{% set total_available.count = total_available.count + 1 %}{% endif %}
-              {% endfor %}
-            {% endfor %}
-            {% if apartment_ns.count %}
-              <div class="unit-card">
-                <div class="d-flex justify-content-between gap-2 flex-wrap">
-                  <b>Apartment {{ a.get('apartment') }}</b>
-                  <span>{{ apartment_ns.count }} available unit{{ '' if apartment_ns.count == 1 else 's' }}</span>
-                </div>
-                {% for f in a.get('floors', []) %}
-                  {% set floor_ns = namespace(count=0) %}
-                  {% for u in f.get('units', []) %}
-                    {% if u.get('available', true) %}{% set floor_ns.count = floor_ns.count + 1 %}{% endif %}
-                  {% endfor %}
-                  {% if floor_ns.count %}
-                    <div class="border rounded-3 p-3 mt-2">
-                      <div class="d-flex justify-content-between gap-2 flex-wrap">
-                        <b>Floor {{ f.get('floor') }}</b>
-                        <span>{{ floor_ns.count }} available unit{{ '' if floor_ns.count == 1 else 's' }}</span>
-                      </div>
-                      {% for u in f.get('units', []) %}
-                        {% if u.get('available', true) %}
-                          {% set key = u.get('label', 'apartment_' ~ a.get('apartment') ~ '_floor_' ~ f.get('floor') ~ '_unit_' ~ loop.index) %}
-                          <div class="border rounded-3 p-3 mt-2">
-                            <div class="d-flex justify-content-between gap-2 flex-wrap">
-                              <b>{{ key|replace('_',' ')|title }}</b>
-                              <span>{{ u.get('type','')|upper }} · {{ u.get('facing','') }}</span>
-                            </div>
-                            <div class="small text-secondary mt-1">{{ u.get('size_yards','') }} sq yd · {{ u.get('size_sqm','') }} sq m · {{ u.get('dimensions','') }}</div>
-                            <div class="fw-semibold mt-1">₹{{ '{:,.0f}'.format((u.get('pricing_min',0) or 0)|float) }}{% if u.get('pricing_max') %} – ₹{{ '{:,.0f}'.format((u.get('pricing_max') or 0)|float) }}{% endif %}</div>
-                            {% set uimgs=unit_images|selectattr('unit_key','equalto',key)|list %}
-                            {% if uimgs %}
-                              <div class="row g-2 mt-2">
-                                {% for im in uimgs %}<div class="col-4"><img class="unit-img" src="{{ url_for('image', image_id=im.id) }}" loading="lazy" alt="{{ key }}"></div>{% endfor %}
-                              </div>
-                            {% endif %}
-                            <a class="btn btn-success btn-sm mt-2" target="_blank"
-                               href="{{ 'https://wa.me/' ~ (property.owner_contact|replace('+','')) ~ '?text=' ~ ('Topvio enquiry: ' ~ property.name ~ ' - ' ~ key ~ ' (' ~ u.get('type','') ~ ', ' ~ u.get('facing','') ~ ')')|urlencode }}">
-                              Connect with team
-                            </a>
-                          </div>
-                        {% endif %}
-                      {% endfor %}
-                    </div>
-                  {% endif %}
-                {% endfor %}
-              </div>
+            {% set apt_available=a.get('floors', [])|map(attribute='units')|sum(start=[])|selectattr('available','equalto',true)|list %}
+            {% if apt_available|length %}
+              <div class="apartment-group"><div class="floor-heading"><strong>Apartment {{ a.get('apartment') }}</strong><span>{{ apt_available|length }} available</span></div>
+              {% for f in a.get('floors', []) %}
+                {% set floor_available=f.get('units', [])|selectattr('available','equalto',true)|list %}
+                {% if floor_available|length %}<div class="floor-group nested"><div class="floor-heading"><strong>Floor {{ f.get('floor') }}</strong><span>{{ floor_available|length }} available</span></div>
+                {% for u in f.get('units', []) if u.get('available', true) %}
+                  {% set key=u.get('label','apartment_' ~ a.get('apartment') ~ '_floor_' ~ f.get('floor') ~ '_unit_' ~ loop.index) %}
+                  <article class="option-card inventory-option" data-type="{{ u.get('type','') }}">
+                    <div class="option-top"><div><span class="option-label">UNIT</span><h4>{{ key|replace('_',' ')|title }}</h4></div><span class="available-badge">● Available</span></div>
+                    <div class="option-facts"><span>{{ u.get('type','') }}</span><span>{{ u.get('facing','') }} facing</span><span>{{ u.get('size_yards','') }} sq yd</span><span>{{ u.get('size_sqm','') }} sq m</span><span>{{ u.get('dimensions','') }}</span></div>
+                    <div class="option-bottom"><strong>₹{{ '{:,.0f}'.format((u.get('pricing_min',0) or 0)|float) }}{% if u.get('pricing_max') %} – ₹{{ '{:,.0f}'.format((u.get('pricing_max') or 0)|float) }}{% endif %}</strong>
+                    {% set uimgs=unit_images|selectattr('unit_key','equalto',key)|list %}{% if uimgs %}<div class="unit-thumb-row">{% for im in uimgs %}<button type="button" class="unit-thumb" data-gallery-src="{{ url_for('image', image_id=im.id) }}"><img src="{{ url_for('image', image_id=im.id) }}" loading="lazy"></button>{% endfor %}</div>{% endif %}</div>
+                    <a class="connect-btn" target="_blank" rel="noopener" href="{{ 'https://wa.me/' ~ (property.owner_contact|replace('+','')) ~ '?text=' ~ ('Topvio enquiry: ' ~ property.name ~ ' - ' ~ key ~ ' (' ~ u.get('type','') ~ ', ' ~ u.get('facing','') ~ ')')|urlencode }}">Connect with team <span>→</span></a>
+                  </article>
+                {% endfor %}</div>{% endif %}
+              {% endfor %}</div>
             {% endif %}
           {% endfor %}
-          {% if total_available.count == 0 %}<div class="empty-state mt-3">No units are currently available.</div>{% endif %}
         {% endif %}
-      </div>
+        </div>
+        <div id="noFilteredOptions" class="empty-state d-none mt-3">No available options match this selection.</div>
+      </section>
     </div>
 
     <div class="col-lg-4">
-      <div class="section-card">
-        <h4>Property & owner</h4>
-        <p class="mb-1"><small class="text-secondary">Owner</small><br>{{ property.owner_name }}</p>
-        <p class="mb-1"><small class="text-secondary">Contact</small><br>{{ property.owner_contact }}</p>
-        <p class="mb-1"><small class="text-secondary">Email</small><br>{{ property.owner_email }}</p>
-        <p class="mb-0"><small class="text-secondary">Documents</small><br>{{ property.property_documents or '—' }}</p>
-      </div>
+      <aside class="documents-card">
+        <div class="documents-icon">▤</div>
+        <div><span class="section-kicker">PROPERTY DOCUMENTS</span><h3>Documents</h3></div>
+        <div class="documents-content">{{ property.property_documents or 'Documents are available on request.' }}</div>
+        <div class="documents-note">Ask the Topvio team for document details.</div>
+      </aside>
     </div>
   </div>
 </div>
+
+<div class="image-lightbox" id="imageLightbox" aria-hidden="true">
+  <button class="lightbox-close" type="button" aria-label="Close">×</button>
+  <button class="lightbox-nav prev" type="button" aria-label="Previous">‹</button>
+  <div class="lightbox-stage"><img id="lightboxImage" alt="Property preview"></div>
+  <button class="lightbox-nav next" type="button" aria-label="Next">›</button>
+  <div class="lightbox-counter" id="lightboxCounter"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const gallerySources=[...document.querySelectorAll('[data-gallery-src]')].map(x=>x.dataset.gallerySrc);
+let galleryIndex=0;
+const lb=document.getElementById('imageLightbox'), lbImg=document.getElementById('lightboxImage'), counter=document.getElementById('lightboxCounter');
+function openPreview(src, index){
+  galleryIndex=index>=0?index:Math.max(0,gallerySources.indexOf(src));
+  lbImg.src=src; counter.textContent=(galleryIndex+1)+' / '+gallerySources.length;
+  lb.classList.add('open'); document.body.classList.add('lightbox-open'); lb.setAttribute('aria-hidden','false');
+}
+function movePreview(dir){
+  if(!gallerySources.length)return;
+  galleryIndex=(galleryIndex+dir+gallerySources.length)%gallerySources.length;
+  openPreview(gallerySources[galleryIndex],galleryIndex);
+}
+function closePreview(){lb.classList.remove('open');document.body.classList.remove('lightbox-open');lb.setAttribute('aria-hidden','true');}
+document.querySelectorAll('.gallery-tile').forEach((el)=>el.addEventListener('click',()=>openPreview(el.dataset.gallerySrc,+el.dataset.galleryIndex)));
+document.querySelectorAll('.unit-thumb').forEach(el=>el.addEventListener('click',()=>openPreview(el.dataset.gallerySrc,-1)));
+document.querySelector('.lightbox-close').onclick=closePreview;
+document.querySelector('.lightbox-nav.prev').onclick=()=>movePreview(-1);
+document.querySelector('.lightbox-nav.next').onclick=()=>movePreview(1);
+lb.addEventListener('click',e=>{if(e.target===lb)closePreview()});
+document.addEventListener('keydown',e=>{if(!lb.classList.contains('open'))return;if(e.key==='Escape')closePreview();if(e.key==='ArrowLeft')movePreview(-1);if(e.key==='ArrowRight')movePreview(1);});
+
+const filters=document.querySelectorAll('.filter-chip'), options=document.querySelectorAll('.inventory-option'), empty=document.getElementById('noFilteredOptions'), summary=document.getElementById('availabilitySummary');
+function applyFilter(type){
+  let count=0; options.forEach(o=>{const show=type==='all'||o.dataset.type===type;o.classList.toggle('d-none',!show);if(show)count++});
+  empty.classList.toggle('d-none',count!==0);
+  summary.textContent=count+' available option'+(count===1?'':'s');
+  filters.forEach(f=>f.classList.toggle('active',f.dataset.filter===type));
+  localStorage.setItem('topvio.last.filter',''+type);
+}
+filters.forEach(f=>f.onclick=()=>applyFilter(f.dataset.filter));
+applyFilter(localStorage.getItem('topvio.last.filter')||'all');
+</script>
 {% endblock %}

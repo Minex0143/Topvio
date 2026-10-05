@@ -1,8 +1,127 @@
-{% extends 'base.html' %}{% block content %}
-<section class="hero"><div class="container py-5 py-lg-6"><div class="row align-items-center g-5"><div class="col-lg-7"><div class="eyebrow">PROPERTY DISCOVERY, SIMPLIFIED</div><h1>Find a place that fits your <span>next move.</span></h1><p class="lead text-secondary">Search listed properties by location and explore homes, apartments and gated communities.</p>
-<form class="search-box mt-4" method="get" action="{{ url_for('index') }}"><div class="input-group input-group-lg"><span class="input-group-text bg-white border-0">⌕</span><input id="locationSearch" name="q" value="{{ q }}" class="form-control border-0" placeholder="Search location, e.g. Hyderabad"><button class="btn btn-dark px-4" type="submit">Search</button></div><input type="hidden" id="lat" name="lat" value="{{ user_lat or '' }}"><input type="hidden" id="lng" name="lng" value="{{ user_lng or '' }}"></form>
-<button class="btn btn-link ps-0 mt-2 text-decoration-none" type="button" onclick="useLocation()">Use my current location for nearby results</button></div><div class="col-lg-5"><div class="hero-card"><div class="mini-grid"><div></div><div></div><div></div><div></div></div><div class="hero-card-copy"><b>topvio</b><span>homes worth exploring</span></div></div></div></div></div></section>
-<section class="container py-5"><div class="d-flex justify-content-between align-items-end mb-4"><div><div class="eyebrow">LISTED PROPERTIES</div><h2 class="mb-0">{% if q %}Results for “{{ q }}”{% else %}Explore properties{% endif %}</h2></div><span class="text-secondary">{{ properties|length }} found</span></div>
-<div class="row g-4">{% for p in properties %}<div class="col-md-6 col-xl-4"><a class="property-card" href="{{ url_for('property_detail', property_id=p.id) }}"><div class="property-image">{% set imgs=p.images|selectattr('scope','equalto','overview')|list %}{% if imgs %}<img src="{{ url_for('image', image_id=imgs[0].id) }}" loading="lazy">{% else %}<div class="placeholder-image">topvio</div>{% endif %}<span class="type-pill">{{ p.property_type|replace('_',' ')|title }}</span></div><div class="p-3"><h5>{{ p.name }}</h5><p class="text-secondary small mb-2">{{ p.address }}</p><div class="small fw-semibold">View property →</div></div></a></div>{% else %}<div class="col-12"><div class="empty-state">No listed properties match this search yet.</div></div>{% endfor %}</div></section>
+{% extends 'base.html' %}
+{% block content %}
+<section class="home-hero">
+  <div class="container py-5 py-lg-6">
+    <div class="row align-items-center g-5">
+      <div class="col-lg-7">
+        <div class="eyebrow">TOPVIO • PROPERTY DISCOVERY</div>
+        <h1>Find a home that feels <span>right.</span></h1>
+        <p class="hero-sub">Explore verified homes, apartments and gated communities. Search a location and discover only properties currently available.</p>
+        <form id="homeSearchForm" class="search-box search-box-premium mt-4" method="get" action="{{ url_for('index') }}">
+          <div class="search-icon">⌕</div>
+          <div class="search-input-wrap">
+            <label for="locationSearch">Where do you want to live?</label>
+            <input id="locationSearch" name="q" value="{{ q }}" autocomplete="off" placeholder="Search city, area or locality">
+          </div>
+          <button class="location-btn" type="button" onclick="useLocation()" title="Use my location">◎</button>
+          <button class="search-submit" type="submit">Search <span>→</span></button>
+          <input type="hidden" id="lat" name="lat" value="{{ user_lat or '' }}">
+          <input type="hidden" id="lng" name="lng" value="{{ user_lng or '' }}">
+        </form>
+        <div class="search-hints">
+          <span>Popular:</span>
+          <button type="button" onclick="quickSearch('Hyderabad')">Hyderabad</button>
+          <button type="button" onclick="quickSearch('Secunderabad')">Secunderabad</button>
+          <button type="button" onclick="quickSearch('Vijayawada')">Vijayawada</button>
+          <button type="button" onclick="quickSearch('Visakhapatnam')">Visakhapatnam</button>
+        </div>
+      </div>
+      <div class="col-lg-5">
+        <div class="hero-visual">
+          <div class="hero-orb orb-one"></div><div class="hero-orb orb-two"></div>
+          <div class="hero-visual-card">
+            <div class="visual-top"><span class="live-dot"></span> LIVE LISTINGS</div>
+            <div class="visual-house">⌂</div>
+            <div><strong>Homes worth exploring</strong><small>Find. Compare. Connect.</small></div>
+          </div>
+          <div class="floating-chip chip-one">✓ Available now</div>
+          <div class="floating-chip chip-two">⌖ Nearby homes</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="container py-5">
+  <div class="section-heading">
+    <div><div class="eyebrow">DISCOVER</div><h2>{% if q %}Properties near “{{ q }}”{% else %}Explore properties{% endif %}</h2></div>
+    <div class="result-count"><strong>{{ properties|length }}</strong> listing{{ '' if properties|length == 1 else 's' }}</div>
+  </div>
+
+  <div class="row g-4">
+    {% for p in properties %}
+    <div class="col-md-6 col-xl-4">
+      <a class="property-card property-card-premium" href="{{ url_for('property_detail', property_id=p.id) }}" data-property-link>
+        <div class="property-image">
+          {% set imgs=p.images|selectattr('scope','equalto','overview')|list %}
+          {% if imgs %}<img src="{{ url_for('image', image_id=imgs[0].id) }}" loading="lazy" alt="{{ p.name }}">
+          {% else %}<div class="placeholder-image">topvio</div>{% endif %}
+          <span class="type-pill">{{ p.property_type|replace('_',' ')|title }}</span>
+          <span class="image-count">▧ {{ imgs|length }}</span>
+        </div>
+        <div class="property-card-body">
+          <div class="property-card-title"><h5>{{ p.name }}</h5><span>→</span></div>
+          <p class="address-line">⌖ {{ p.address }}</p>
+          <div class="construction-mini">
+            {% if p.construction_completed %}
+              <span class="construction-dot completed"></span>
+              <div><b>Construction completed</b><small>Started {{ p.construction_start or '—' }} · Completed {{ p.construction_end or '—' }}</small></div>
+            {% else %}
+              <span class="construction-dot progress"></span>
+              <div><b>Under construction</b><small>Started {{ p.construction_start or '—' }} · Expected {{ p.construction_end or '—' }}</small></div>
+            {% endif %}
+          </div>
+          <div class="explore-label">View available options <span>↗</span></div>
+        </div>
+      </a>
+    </div>
+    {% else %}
+    <div class="col-12">
+      <div class="empty-state empty-home">
+        <div class="empty-emoji">⌂</div><h4>No properties found</h4>
+        <p>Try another locality or use your current location to find nearby listings.</p>
+        <button class="btn btn-dark rounded-4 px-4" onclick="document.getElementById('locationSearch').focus()">Change search</button>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</section>
 {% endblock %}
-{% block scripts %}<script>function useLocation(){if(!navigator.geolocation){alert('Location is not available on this device.');return;}navigator.geolocation.getCurrentPosition(p=>{document.getElementById('lat').value=p.coords.latitude;document.getElementById('lng').value=p.coords.longitude;document.getElementById('locationSearch').focus();},()=>alert('Please allow location access and try again.'));}</script>{% endblock %}
+{% block scripts %}
+<script>
+const TOPVIO_HOME_KEY='topvio.home.search.v1';
+function saveHomeState(){
+  localStorage.setItem(TOPVIO_HOME_KEY, JSON.stringify({
+    q:document.getElementById('locationSearch').value,
+    lat:document.getElementById('lat').value,
+    lng:document.getElementById('lng').value
+  }));
+}
+function quickSearch(v){document.getElementById('locationSearch').value=v;saveHomeState();document.getElementById('homeSearchForm').submit();}
+function useLocation(){
+  if(!navigator.geolocation){alert('Location is not available on this device.');return;}
+  navigator.geolocation.getCurrentPosition(p=>{
+    document.getElementById('lat').value=p.coords.latitude;
+    document.getElementById('lng').value=p.coords.longitude;
+    document.getElementById('locationSearch').value=document.getElementById('locationSearch').value || 'Nearby';
+    saveHomeState();
+    document.getElementById('homeSearchForm').submit();
+  },()=>alert('Please allow location access and try again.'));
+}
+document.getElementById('homeSearchForm').addEventListener('submit',saveHomeState);
+(function(){
+  const params=new URLSearchParams(location.search);
+  if(!params.has('q') && !params.has('lat')){
+    try{
+      const s=JSON.parse(localStorage.getItem(TOPVIO_HOME_KEY)||'null');
+      if(s && (s.q || (s.lat && s.lng))){
+        document.getElementById('locationSearch').value=s.q||'';
+        document.getElementById('lat').value=s.lat||'';
+        document.getElementById('lng').value=s.lng||'';
+        if(s.q) document.getElementById('homeSearchForm').submit();
+      }
+    }catch(e){}
+  }
+})();
+</script>
+{% endblock %}
